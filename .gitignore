@@ -1,0 +1,17 @@
+# 构建产物与发布产物不入库（见 docs/RELEASE.md）
+out/
+*.apk
+*.idsig
+update.json
+SHA256SUMS.txt
+
+# 签名密钥绝不入库
+*.keystore
+*.jks
+.build-env/
+
+# IDE / 系统杂项
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
