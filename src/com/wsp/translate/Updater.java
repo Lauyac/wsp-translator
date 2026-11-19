@@ -26,7 +26,7 @@ import java.security.MessageDigest;
 public final class Updater {
 
     /** TODO: 仓库公开后改为实际仓库（"用户名/仓库名"）。 */
-    public static final String UPDATE_REPO = "YOUR_GITHUB_USER/wsp-translator";
+    public static final String UPDATE_REPO = "Lauyac/wsp-translator";
 
     /** 单个更新包大小上限：100MB，防止异常资产撑爆存储。 */
     private static final long MAX_APK_BYTES = 100L * 1024 * 1024;
