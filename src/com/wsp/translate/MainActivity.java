@@ -7,6 +7,9 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.RippleDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -30,22 +33,32 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity {
 
-    // ---- 设计规范（现代蓝 · Slate 中性色）----
-    private static final int C_PAGE   = 0xFFF1F5F9;  // 页面底色
+    // ---- 设计规范（现代蓝 · Slate 中性色 · 规范化 v2）----
+    // 配色：页面/卡片/主色/文字四级/描边/禁用
+    private static final int C_PAGE   = 0xFFF6F7FB;  // 页面底色（更柔和）
     private static final int C_CARD   = 0xFFFFFFFF;  // 卡片
     private static final int C_PRIMARY= 0xFF2563EB;  // 主色 蓝
     private static final int C_PRIMARY_DARK = 0xFF1E40AF;
+    private static final int C_PRIMARY_PRESSED = 0xFF1D4ED8;  // 按下态
     private static final int C_PRIMARY_LIGHT = 0xFFEFF6FF;
     private static final int C_TEXT   = 0xFF0F172A;  // 主文字
-    private static final int C_SUB    = 0xFF64748B;  // 次级文字
-    private static final int C_STROKE = 0xFFE2E8F0;  // 卡片描边
+    private static final int C_SUB    = 0xFF475569;  // 次级文字（加深提升可读性）
+    private static final int C_HINT   = 0xFF94A3B8;  // 辅助文字/占位/禁用文字
+    private static final int C_STROKE = 0xFFE8EDF4;  // 卡片描边（更轻）
     private static final int C_INPUT_STROKE = 0xFFCBD5E1;
+    private static final int C_DISABLED_BG = 0xFFE2E8F0;  // 禁用背景
     private static final int C_OK     = 0xFF16A34A;
     private static final int C_ERR    = 0xFFDC2626;
     private static final int C_WARN   = 0xFFD97706;
+    // 圆角体系（dp）：卡片 / 组件 / 胶囊
+    private static final float R_CARD = 20;
+    private static final float R_COMP = 14;
+    private static final float R_PILL = 999;
 
     private Settings st;
     private Handler ui;
+    /** 宽屏时内容区最大宽度（px），0 表示不限。 */
+    private int maxCardW = 0;
     private EditText etKey, etBase;
     private Spinner spDraft, spIncoming, spModel;
     /** 模型预设列表（按展示顺序）。 */
@@ -86,10 +99,20 @@ public class MainActivity extends Activity {
         sv.setFillViewport(true);
         sv.addView(page);
 
-        LinearLayout root = column(page, dp(16), dp(16), dp(16), dp(24));
+        // 响应式留白：宽屏（平板/横屏）加大页边距，并限制内容列宽度居中
+        int pagePad = getResources().getConfiguration().screenWidthDp >= 600 ? dp(28) : dp(16);
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        maxCardW = (screenW - 2 * pagePad) > dp(600) ? dp(600) : 0;
+        LinearLayout root = column(page, pagePad, dp(12), pagePad, dp(28));
 
         // ---- 顶部渐变 Hero ----
-        root.addView(buildHero());
+        View hero = buildHero();
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        if (maxCardW > 0) { hp.width = maxCardW; hp.gravity = Gravity.CENTER_HORIZONTAL; }
+        hp.setMargins(0, dp(4), 0, dp(4));
+        hero.setLayoutParams(hp);
+        root.addView(hero);
 
         // ---- ① 连接与凭据 ----
         LinearLayout c1 = card(root, dp(20));
@@ -156,7 +179,7 @@ public class MainActivity extends Activity {
         tvPerm.setTextColor(C_TEXT);
         tvPerm.setTypeface(Typeface.MONOSPACE);
         tvPerm.setLineSpacing(dp(4), 1f);
-        tvPerm.setBackground(bg(C_PRIMARY_LIGHT, dp(10), 0));
+        tvPerm.setBackground(bg(C_PRIMARY_LIGHT, dp(R_COMP), 0));
         tvPerm.setPadding(dp(12), dp(10), dp(12), dp(10));
         c3.addView(tvPerm);
         c3.addView(withMargin(permBtn("开启通知使用权（收信翻译）", new View.OnClickListener() {
@@ -201,7 +224,11 @@ public class MainActivity extends Activity {
         tvVerBadge.setTextColor(C_PRIMARY);
         tvVerBadge.setTextSize(12);
         tvVerBadge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        tvVerBadge.setBackground(bg(C_PRIMARY_LIGHT, dp(10), 0));
+        tvVerBadge.setBackground(interactiveBg(
+            bg(C_PRIMARY_LIGHT, dp(10), 0),
+            bg(0xFFDBEAFE, dp(10), 0),
+            bg(C_PRIMARY_LIGHT, dp(10), 0),
+            0x142563EB));
         tvVerBadge.setPadding(dp(10), dp(4), dp(10), dp(4));
         // 点击徽章查看当前版本的更新内容
         tvVerBadge.setOnClickListener(new View.OnClickListener() {
@@ -234,7 +261,7 @@ public class MainActivity extends Activity {
         // 新版本详情面板（发现新版本时显示）
         updatePanel = new LinearLayout(this);
         updatePanel.setOrientation(LinearLayout.VERTICAL);
-        updatePanel.setBackground(bg(C_PRIMARY_LIGHT, dp(12), 0));
+        updatePanel.setBackground(bg(C_PRIMARY_LIGHT, dp(R_COMP), 0));
         updatePanel.setPadding(dp(14), dp(12), dp(14), dp(14));
 
         tvUpdateTitle = new TextView(this);
@@ -296,34 +323,37 @@ public class MainActivity extends Activity {
         TextView foot = new TextView(this);
         foot.setText("WSP Translator · 开源 · GitHub @YaChiLau");
         foot.setTextSize(11);
-        foot.setTextColor(C_SUB);
+        foot.setTextColor(C_HINT);
         foot.setGravity(Gravity.CENTER);
-        root.addView(withMargin(foot, 0, dp(16), 0, 0));
+        root.addView(withMargin(foot, 0, dp(20), 0, 0));
 
         return sv;
     }
 
-    /** 顶部渐变横幅：应用名 + 简介 + 版本徽章。 */
+    /** 顶部渐变横幅：圆角浮层卡片，应用名 + 简介 + 版本胶囊。 */
     private View buildHero() {
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            new int[]{C_PRIMARY, C_PRIMARY_DARK});
+            new int[]{0xFF3B82F6, C_PRIMARY_DARK});
+        g.setCornerRadius(dp(24));
         LinearLayout hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
         hero.setBackground(g);
-        hero.setPadding(dp(20), dp(24), dp(20), dp(20));
+        hero.setElevation(dp(4));
+        hero.setPadding(dp(24), dp(28), dp(24), dp(24));
 
         TextView name = new TextView(this);
         name.setText("WSP 翻译助手");
         name.setTextColor(Color.WHITE);
-        name.setTextSize(22);
+        name.setTextSize(24);
         name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        name.setLetterSpacing(-0.01f);
         hero.addView(name);
 
         TextView sub = new TextView(this);
         sub.setText("收信翻译 · 悬浮翻译 · 草稿翻译");
-        sub.setTextColor(0xFFDBEAFE);
-        sub.setTextSize(13);
-        sub.setPadding(0, dp(4), 0, 0);
+        sub.setTextColor(0xFFBFDBFE);
+        sub.setTextSize(14);
+        sub.setPadding(0, dp(6), 0, 0);
         hero.addView(sub);
 
         TextView chip = new TextView(this);
@@ -331,9 +361,9 @@ public class MainActivity extends Activity {
         chip.setTextColor(Color.WHITE);
         chip.setTextSize(11);
         chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        chip.setBackground(bg(0x33FFFFFF, dp(14), 0));
-        chip.setPadding(dp(10), dp(4), dp(10), dp(4));
-        hero.addView(withMargin(chip, 0, dp(10), 0, 0));
+        chip.setBackground(bg(0x2EFFFFFF, dp(R_PILL), 0));
+        chip.setPadding(dp(12), dp(5), dp(12), dp(5));
+        hero.addView(withMargin(chip, 0, dp(14), 0, 0));
 
         return hero;
     }
@@ -348,21 +378,26 @@ public class MainActivity extends Activity {
         return v;
     }
 
-    /** 白色圆角卡片。 */
+    /** 白色圆角卡片：轻描边 + 微投影 + 宽屏限宽居中。 */
     private LinearLayout card(ViewGroup parent, int pad) {
         LinearLayout v = new LinearLayout(this);
         v.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(C_CARD);
-        bg.setCornerRadius(dp(16));
+        bg.setCornerRadius(dp(R_CARD));
         bg.setStroke(dp(1), C_STROKE);
         v.setBackground(bg);
+        v.setElevation(dp(2));
         v.setPadding(pad, pad, pad, pad);
-        parent.addView(withMargin(v, 0, dp(12), 0, 0));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        if (maxCardW > 0) { p.width = maxCardW; p.gravity = Gravity.CENTER_HORIZONTAL; }
+        v.setLayoutParams(p);
+        parent.addView(withMargin(v, 0, dp(14), 0, 0));
         return v;
     }
 
-    /** 卡片内分节标题：彩色竖条 + 加粗标题。 */
+    /** 卡片内分节标题：彩色竖条 + 加粗标题 + 序号胶囊。 */
     private void sectionTitle(ViewGroup card, String title, String no) {
         LinearLayout row = row();
         View bar = new View(this);
@@ -375,7 +410,7 @@ public class MainActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(title);
         t.setTextColor(C_TEXT);
-        t.setTextSize(17);
+        t.setTextSize(16);
         t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         t.setPadding(dp(10), 0, 0, 0);
         row.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -383,10 +418,10 @@ public class MainActivity extends Activity {
         TextView n = new TextView(this);
         n.setText(no);
         n.setTextColor(C_PRIMARY);
-        n.setTextSize(12);
+        n.setTextSize(11);
         n.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        n.setBackground(bg(C_PRIMARY_LIGHT, dp(10), 0));
-        n.setPadding(dp(8), dp(2), dp(8), dp(2));
+        n.setBackground(bg(C_PRIMARY_LIGHT, dp(R_PILL), 0));
+        n.setPadding(dp(9), dp(3), dp(9), dp(3));
         row.addView(n);
 
         card.addView(withMargin(row, 0, 0, 0, dp(14)));
@@ -404,33 +439,38 @@ public class MainActivity extends Activity {
     private TextView caption(String t) {
         TextView v = new TextView(this);
         v.setText(t);
-        v.setTextColor(C_SUB);
+        v.setTextColor(C_HINT);
         v.setTextSize(12);
         v.setPadding(dp(2), 0, dp(2), dp(10));
         return v;
+    }
+
+    /** 输入框背景：默认/聚焦双态（聚焦加深描边并加粗）。 */
+    private StateListDrawable inputBg() {
+        GradientDrawable def = bgStroke(C_CARD, C_INPUT_STROKE, dp(R_COMP));
+        GradientDrawable foc = bgStroke(C_CARD, C_PRIMARY, dp(R_COMP));
+        foc.setStroke(dp(2), C_PRIMARY);
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{android.R.attr.state_focused}, foc);
+        s.addState(new int[]{}, def);
+        return s;
     }
 
     private EditText input(String hint, boolean key) {
         EditText e = new EditText(this);
         e.setHint(hint);
         e.setTextColor(C_TEXT);
-        e.setHintTextColor(0xFF94A3B8);
-        e.setTextSize(14);
-        e.setBackground(bgStroke(C_CARD, C_INPUT_STROKE, dp(12)));
-        e.setPadding(dp(14), dp(12), dp(14), dp(12));
+        e.setHintTextColor(C_HINT);
+        e.setTextSize(15);
+        e.setBackground(inputBg());
+        e.setPadding(dp(14), dp(13), dp(14), dp(13));
         if (key) e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        e.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override public void onFocusChange(View v, boolean has) {
-                GradientDrawable g = (GradientDrawable) v.getBackground();
-                g.setStroke(dp(1), has ? C_PRIMARY : C_INPUT_STROKE);
-            }
-        });
         return e;
     }
 
     private View spinnerWrap(Spinner s) {
         LinearLayout w = new LinearLayout(this);
-        w.setBackground(bgStroke(C_CARD, C_INPUT_STROKE, dp(12)));
+        w.setBackground(bgStroke(C_CARD, C_INPUT_STROKE, dp(R_COMP)));
         w.setPadding(dp(6), 0, dp(6), 0);
         w.addView(s, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(46)));
@@ -473,19 +513,25 @@ public class MainActivity extends Activity {
         c.setText(t);
         c.setTextSize(13);
         c.setTextColor(C_TEXT);
-        c.setPadding(dp(4), dp(4), dp(4), dp(4));
+        c.setPadding(dp(4), dp(6), dp(4), dp(6));
+        c.setMinimumHeight(dp(40)); // 保证触控目标高度
         return c;
     }
 
     private Button primaryBtn(String t, View.OnClickListener l) {
         Button b = new Button(this);
         b.setText(t);
-        b.setTextColor(Color.WHITE);
         b.setTextSize(14);
         b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         b.setAllCaps(false);
-        b.setBackground(bg(C_PRIMARY, dp(12), 0));
-        b.setPadding(0, dp(12), 0, dp(12));
+        b.setStateListAnimator(null); // 去系统投影，按压反馈交给波纹
+        b.setTextColor(textColor(Color.WHITE, C_HINT));
+        b.setBackground(interactiveBg(
+            bg(C_PRIMARY, dp(R_COMP), 0),
+            bg(C_PRIMARY_PRESSED, dp(R_COMP), 0),
+            bg(C_DISABLED_BG, dp(R_COMP), 0),
+            0x2E2563EB));
+        b.setPadding(0, dp(13), 0, dp(13));
         b.setOnClickListener(l);
         return b;
     }
@@ -493,12 +539,17 @@ public class MainActivity extends Activity {
     private Button outlineBtn(String t, View.OnClickListener l) {
         Button b = new Button(this);
         b.setText(t);
-        b.setTextColor(C_PRIMARY);
         b.setTextSize(14);
         b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         b.setAllCaps(false);
-        b.setBackground(bgStroke(C_CARD, C_PRIMARY, dp(12)));
-        b.setPadding(0, dp(12), 0, dp(12));
+        b.setStateListAnimator(null);
+        b.setTextColor(textColor(C_PRIMARY, C_HINT));
+        b.setBackground(interactiveBg(
+            bgStroke(C_CARD, C_PRIMARY, dp(R_COMP)),
+            bgStroke(C_PRIMARY_LIGHT, C_PRIMARY, dp(R_COMP)),
+            bgStroke(C_PAGE, C_STROKE, dp(R_COMP)),
+            0x1A2563EB));
+        b.setPadding(0, dp(13), 0, dp(13));
         b.setOnClickListener(l);
         return b;
     }
@@ -506,10 +557,15 @@ public class MainActivity extends Activity {
     private Button permBtn(String t, View.OnClickListener l) {
         Button b = new Button(this);
         b.setText("›  " + t);
-        b.setTextColor(C_TEXT);
         b.setTextSize(13);
         b.setAllCaps(false);
-        b.setBackground(bgStroke(C_CARD, C_STROKE, dp(12)));
+        b.setStateListAnimator(null);
+        b.setTextColor(textColor(C_TEXT, C_HINT));
+        b.setBackground(interactiveBg(
+            bgStroke(C_CARD, C_STROKE, dp(R_COMP)),
+            bg(C_PRIMARY_LIGHT, dp(R_COMP), 0),
+            bgStroke(C_CARD, C_STROKE, dp(R_COMP)),
+            0x142563EB));
         b.setPadding(dp(12), dp(12), dp(12), dp(12));
         b.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         b.setOnClickListener(l);
@@ -523,13 +579,33 @@ public class MainActivity extends Activity {
         v.setTextSize(13);
         v.setTextColor(C_TEXT);
         v.setLineSpacing(dp(3), 1f);
-        v.setBackground(bg(C_PRIMARY_LIGHT, dp(12), 0));
+        v.setBackground(bg(C_PRIMARY_LIGHT, dp(R_COMP), 0));
         v.setPadding(dp(12), dp(10), dp(12), dp(10));
         parent.addView(withMargin(v, 0, dp(12), 0, 0));
         return v;
     }
 
     // ==================== 绘制工具 ====================
+
+    /** 三态背景（禁用/按下/默认）+ 按压波纹，统一交互反馈。 */
+    private Drawable interactiveBg(Drawable def, Drawable pressed, Drawable disabled, int rippleColor) {
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{-android.R.attr.state_enabled}, disabled);
+        s.addState(new int[]{android.R.attr.state_pressed}, pressed);
+        s.addState(new int[]{}, def);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setCornerRadius(dp(R_COMP));
+        mask.setColor(0xFFFFFFFF);
+        return new RippleDrawable(
+            android.content.res.ColorStateList.valueOf(rippleColor), s, mask);
+    }
+
+    /** 文字颜色状态表：禁用变灰。 */
+    private android.content.res.ColorStateList textColor(int defColor, int disabledColor) {
+        return new android.content.res.ColorStateList(
+            new int[][]{{-android.R.attr.state_enabled}, {}},
+            new int[]{disabledColor, defColor});
+    }
 
     private GradientDrawable bg(int color, float radius, int stroke) {
         GradientDrawable g = new GradientDrawable();
@@ -567,7 +643,7 @@ public class MainActivity extends Activity {
         return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
     }
 
-    private int dp(int v) {
+    private int dp(float v) {
         return (int) (getResources().getDisplayMetrics().density * v + 0.5f);
     }
 
