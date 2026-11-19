@@ -274,7 +274,7 @@ public class MainActivity extends Activity {
         c5.addView(help);
 
         TextView foot = new TextView(this);
-        foot.setText("WSP Translator · 开源 · versionCode 单调递增 · SHA-256 校验");
+        foot.setText("WSP Translator · 开源 · GitHub @Lauyac");
         foot.setTextSize(11);
         foot.setTextColor(C_SUB);
         foot.setGravity(Gravity.CENTER);
