@@ -79,6 +79,7 @@ public class FloatService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        CrashHandler.install(this);
         ui = new Handler(Looper.getMainLooper());
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         if (new Settings(this).bubbleEnabled()) addBubble();

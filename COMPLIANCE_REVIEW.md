@@ -62,3 +62,14 @@
 - 代码与产物层面**当前未发现许可证冲突或未署名的已捆绑开源组件**；依赖面极小且全部为 Apache-2.0，开源合规基础良好。
 - 发布前必须完成：① 确认上游扩展许可证（R1）；② 添加项目 LICENSE（R2）；③ 固化签名密钥与更新校验流程（R3）；④ 补 PRIVACY.md（R5）。
 - 已生成可直接入库的文件：`THIRD_PARTY_NOTICES.md`、`NOTICE`、`README_LICENSE_SNIPPET.md`（README 致谢/许可证/免责声明片段）。
+
+## 五、整改状态更新（2026-11-19 健康检查后）
+
+| 风险项 | 状态 | 落地方式 |
+|---|---|---|
+| R1 上游扩展许可证未确认 | **仍挂起**（涉及权利归属确认，只能由项目所有者完成） | THIRD_PARTY_NOTICES.md 第 5 节保持占位；见 docs/TODO.md 第 5 条 |
+| R2 无 LICENSE | ✅ 已关闭 | LICENSE = Apache-2.0 官方原文（与 AOSP/org.json 生态一致，含专利授权）；README/LICENSE/NOTICE 已联动 |
+| R3 签名密钥风险 | ✅ 大部分关闭 | debug.keystore 已备份（secrets/backup/）；专用 release keystore 已生成（secrets/wsp-release.keystore，暂未启用——切换会导致已装用户需一次性卸载重装，启用步骤见 secrets/release-keystore.txt）；SHA-256 更新校验早已上线 |
+| R4 商标使用 | ✅ 已缓解 | 应用名已改为"WSP 翻译助手"（避免含商标）；README 免责声明已落地 |
+| R5 隐私说明缺失 | ✅ 已关闭 | PRIVACY.md（数据流表、权限用途表、不做什么清单） |
+| R6/R7 一致性 | ✅ 维持 | 发布流程硬化为 publish.sh 一键发布（幂等），CHANGELOG/版本/资产一致性由脚本强制 |

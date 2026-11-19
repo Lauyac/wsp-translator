@@ -13,6 +13,10 @@
 ## 发布步骤
 
 ```bash
+# 一键发布（推荐）：构建 → 本地发布物 → commit/tag/push → 创建 Release 并上传资产
+bash publish.sh
+
+# 或分步执行：
 # 1. 修改 build.sh 中的 VERSION / VERSION_CODE（VERSION_CODE 严格 +1）
 # 2. 构建
 bash build.sh
@@ -26,12 +30,21 @@ git add . && git commit -m "release: v<VERSION>"
 # 5. 打标签并推送
 git tag v<VERSION> && git push origin main v<VERSION>
 
-# 6. 在 GitHub 创建 Release（tag v<VERSION>，标题与 CHANGELOG 一致），
-#    上传三个资产：
-#      - wsp-translator-<VERSION>.apk
-#      - update.json          （应用更新检查读取的清单）
-#      - SHA256SUMS.txt       （供人工核对）
+# 6. 创建 GitHub Release（或重跑 bash publish.sh，它对已存在 Release 幂等：
+#    复用 Release、同名资产先删后传）
 ```
+
+## CI（.github/workflows/ci.yml）
+
+- push/PR 时在 ubuntu runner 上用可移植版 build.sh 完整构建（`WSP_SDK=$ANDROID_HOME`），
+  随后 release.sh 生成清单并校验 APK 实际 SHA-256 与 update.json 一致，最后上传构件。
+- CI 中使用自动生成的临时 keystore，仅验证"能构建"，不影响正式签名。
+
+## 签名密钥
+
+- 当前正式签名沿用历史 debug.keystore（`$WSP_BUILD_ENV/debug.keystore`，本机备份在 `secrets/backup/`），保证已装用户覆盖升级连续。
+- 专用 release keystore 已生成于 `secrets/wsp-release.keystore`，**暂未启用**；启用即意味着所有已装用户需一次性卸载重装，切换步骤与口令记录见 `secrets/release-keystore.txt`。
+- 密钥文件与口令绝不入库（.gitignore 覆盖 `*.keystore`、`*.jks`、`secrets/`、`.build-env/`）。
 
 ## 应用侧更新逻辑（Updater.java）
 
@@ -43,7 +56,8 @@ git tag v<VERSION> && git push origin main v<VERSION>
    - 通过 → 经 `UpdateFileProvider`（content:// + 临时读权限）调起系统安装器（需"安装未知应用"权限）
    - 失败 → **删除文件、提示错误、不进入安装流程**
 
-## 上线前待办
+## 状态（2026-11-19 健康检查后）
 
-- 将 `Updater.UPDATE_REPO` 改为实际 `"用户名/仓库名"` 并重新构建首个 Release 版本。
-- 生成专用 release keystore 并离线备份；确认首个 Release 的 versionCode 与历史安装版本连续。
+- `Updater.UPDATE_REPO` 已为实际值 `"Lauyac/wsp-translator"`，在线更新链路已实测可用。
+- 签名密钥备份与专用 release keystore 已落地（见上文「签名密钥」与 secrets/）。
+- 剩余唯一合规挂起项：上游浏览器扩展许可证确认（COMPLIANCE_REVIEW.md R1 / THIRD_PARTY_NOTICES.md 第 5 节），需项目所有者确认。

@@ -9,6 +9,7 @@ SHA256SUMS.txt
 *.keystore
 *.jks
 .build-env/
+secrets/
 
 # IDE / 系统杂项
 .idea/

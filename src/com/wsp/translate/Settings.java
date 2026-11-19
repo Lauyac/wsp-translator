@@ -11,7 +11,22 @@ public class Settings {
         p = c.getSharedPreferences("wsp", Context.MODE_PRIVATE);
     }
 
-    public String apiKey()      { return p.getString("apiKey", ""); }
+    /**
+     * API Key：读取时解密；发现旧版本存的明文则自动迁移为加密存储（懒迁移）。
+     */
+    public String apiKey() {
+        String raw = p.getString("apiKey", "");
+        if (raw == null || raw.isEmpty()) return "";
+        if (raw.startsWith("v1:")) return Crypto.decrypt(raw);
+        // 旧版明文：回读明文并立即以密文覆写
+        p.edit().putString("apiKey", Crypto.encrypt(raw)).apply();
+        return raw;
+    }
+
+    /** 保存 API Key（加密落盘）。 */
+    public void setApiKey(String v) {
+        p.edit().putString("apiKey", Crypto.encrypt(v == null ? "" : v.trim())).apply();
+    }
     public String baseUrl()     { return p.getString("baseUrl", "https://api.deepseek.com"); }
     public String model()       { return p.getString("model", "deepseek-v4-flash"); }
     public String draftLang()   { return p.getString("draftLang", "en"); }

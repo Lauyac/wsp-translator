@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build APK
+        run: bash build.sh
+        env:
+          WSP_SDK: ${{ env.ANDROID_HOME }}
+
+      - name: Generate release manifests
+        run: bash release.sh
+
+      - name: Verify SHA-256 manifest matches APK
+        run: |
+          expected=$(cut -d' ' -f1 SHA256SUMS.txt)
+          actual=$(sha256sum wsp-translator-*.apk | cut -d' ' -f1)
+          echo "expected=$expected actual=$actual"
+          [ "$expected" = "$actual" ] || { echo "SHA-256 不一致"; exit 1; }
+          jq -e --arg s "$expected" '.sha256 == $s' update.json >/dev/null
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: |
+            *.apk
+            update.json
+            SHA256SUMS.txt
+          if-no-files-found: error

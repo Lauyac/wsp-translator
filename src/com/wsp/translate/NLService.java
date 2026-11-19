@@ -31,6 +31,7 @@ public class NLService extends NotificationListenerService {
     @Override
     public void onCreate() {
         super.onCreate();
+        CrashHandler.install(this);
         nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         NotificationChannel ch = new NotificationChannel(CH_ID, CH_NAME,
             NotificationManager.IMPORTANCE_DEFAULT);

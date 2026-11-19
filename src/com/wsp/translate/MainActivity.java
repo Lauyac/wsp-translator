@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        CrashHandler.install(this);
         st = new Settings(this);
         ui = new Handler(Looper.getMainLooper());
         setContentView(buildUi());
@@ -289,7 +290,7 @@ public class MainActivity extends Activity {
         help.setText("· 收信翻译：保持本应用在后台运行，聊天应用（如 WhatsApp）收到新消息后会自动发出一条「译 · 」开头的本地通知，展示原文与译文；翻译失败时也会发出失败通知并说明原因。\n\n"
             + "· 悬浮翻译：打开聊天应用（如 WhatsApp）的聊天界面 → 点悬浮球「译」→ 自动读取屏幕并翻译。\n\n"
             + "· 草稿翻译：在悬浮面板输入中文 → 点「翻译并填入」→ 译文写入聊天应用输入框，请核对后手动发送（本应用绝不自动发送消息）。\n\n"
-            + "· 隐私：译文缓存仅存本机内存，退出应用即清空；聊天内容不会被保存或上传，仅作为翻译请求发送给你配置的 API 服务端。");
+            + "· 隐私：译文缓存仅存本机内存，退出应用即清空；聊天内容不会被保存或上传，仅作为翻译请求发送给你配置的 API 服务端。API Key 在本机加密存储（AndroidKeyStore）；崩溃日志仅保存在本机应用专属目录，不上传。完整说明见仓库 PRIVACY.md。");
         c5.addView(help);
 
         TextView foot = new TextView(this);
@@ -798,7 +799,7 @@ public class MainActivity extends Activity {
     }
 
     private void save() {
-        st.put("apiKey", etKey.getText().toString().trim());
+        st.setApiKey(etKey.getText().toString().trim());
         String base = etBase.getText().toString().trim();
         st.put("baseUrl", base.isEmpty() ? "https://api.deepseek.com" : base);
         st.put("model", String.valueOf(spModel.getSelectedItem()));
