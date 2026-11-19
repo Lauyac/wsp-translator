@@ -130,6 +130,36 @@ public final class Updater {
         }
     }
 
+    // ==================== 版本更新说明查询 ====================
+
+    /**
+     * 获取指定版本（versionName，如 "1.1.3"）在 GitHub Releases 中的更新说明。
+     * 通过 tag（v1.1.3）或 Release 名称与版本号匹配，只读描述、不下载数据。
+     */
+    public static Result fetchNotes(String versionName) {
+        try {
+            String rel = httpGet(
+                "https://api.github.com/repos/" + UPDATE_REPO + "/releases?per_page=30", null);
+            JSONArray arr = new JSONArray(rel);
+            String wantTag = "v" + versionName;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject r = arr.getJSONObject(i);
+                String tag = r.optString("tag_name", "");
+                String name = r.optString("name", "");
+                if (tag.equalsIgnoreCase(wantTag) || name.equals(versionName)) {
+                    String body = r.optString("body", "").trim();
+                    if (body.isEmpty()) body = "（该版本发布时未附更新说明）";
+                    return Result.ok(body, null, null);
+                }
+            }
+            return Result.fail("未在 GitHub Releases 中找到 v" + versionName + " 的发布记录");
+        } catch (HttpCodeException e) {
+            return Result.fail("获取更新说明失败: HTTP " + e.code);
+        } catch (Exception e) {
+            return Result.fail("获取更新说明失败: " + Translator.friendlyError(e));
+        }
+    }
+
     // ==================== 阶段二：确认后下载 ====================
 
     /**

@@ -13,7 +13,7 @@ public class Settings {
 
     public String apiKey()      { return p.getString("apiKey", ""); }
     public String baseUrl()     { return p.getString("baseUrl", "https://api.deepseek.com"); }
-    public String model()       { return p.getString("model", "deepseek-chat"); }
+    public String model()       { return p.getString("model", "deepseek-v4-flash"); }
     public String draftLang()   { return p.getString("draftLang", "en"); }
     public String incomingLang(){ return p.getString("incomingLang", "zh-CN"); }
     public boolean notifEnabled()   { return p.getBoolean("notifEnabled", true); }

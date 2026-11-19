@@ -106,7 +106,7 @@ public class MainActivity extends Activity {
         c1.addView(label("API 地址"));
         etBase = input("默认 https://api.deepseek.com，兼容 OpenAI 网关/私有代理", false);
         c1.addView(label("模型"));
-        etModel = input("默认 deepseek-chat", false);
+        etModel = input("默认 deepseek-v4-flash", false);
         c1.addView(etBase);
         c1.addView(etModel);
 
@@ -194,8 +194,19 @@ public class MainActivity extends Activity {
         tvVerBadge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         tvVerBadge.setBackground(bg(C_PRIMARY_LIGHT, dp(10), 0));
         tvVerBadge.setPadding(dp(10), dp(4), dp(10), dp(4));
+        // 点击徽章查看当前版本的更新内容
+        tvVerBadge.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showVersionNotes(); }
+        });
         verRow.addView(tvVerBadge);
         c4.addView(verRow);
+
+        TextView verHint = new TextView(this);
+        verHint.setText("点击版本徽章可查看本版本更新内容");
+        verHint.setTextColor(C_SUB);
+        verHint.setTextSize(11);
+        verHint.setPadding(dp(2), dp(6), dp(2), 0);
+        c4.addView(verHint);
 
         // 检查按钮（与其他卡片的按钮保持同一节奏：上 12dp）
         btnCheck = primaryBtn("检查更新", new View.OnClickListener() {
@@ -560,6 +571,44 @@ public class MainActivity extends Activity {
 
     // ==================== 应用更新（两阶段） ====================
 
+    /** 点击版本徽章：弹窗展示当前版本在 GitHub Releases 中的更新说明。 */
+    private void showVersionNotes() {
+        final String ver = versionName();
+        final TextView tv = new TextView(this);
+        tv.setTextSize(13);
+        tv.setTextColor(C_TEXT);
+        tv.setLineSpacing(dp(3), 1f);
+        tv.setPadding(dp(20), dp(16), dp(20), dp(16));
+        tv.setText("正在获取 v" + ver + " 的更新说明…");
+
+        ScrollView sc = new ScrollView(this);
+        sc.addView(tv);
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("v" + ver + " 更新内容")
+            .setView(sc)
+            .setPositiveButton("知道了", null)
+            .show();
+
+        Translator.submit(new Runnable() {
+            @Override
+            public void run() {
+                final Updater.Result r = Updater.fetchNotes(ver);
+                ui.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (r.ok) {
+                            tv.setText(formatNotes(r.message));
+                        } else {
+                            tv.setText(r.message
+                                + "\n\n说明文本托管在 GitHub Releases，需要网络可用；请稍后重试。");
+                            tv.setTextColor(C_ERR);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
     /** 阶段一：检查版本信息，发现新版本时展示版本信息与更新说明，等待用户确认。 */
     private void checkUpdate() {
         tvUpdate.setVisibility(View.VISIBLE);
@@ -724,7 +773,7 @@ public class MainActivity extends Activity {
         String base = etBase.getText().toString().trim();
         st.put("baseUrl", base.isEmpty() ? "https://api.deepseek.com" : base);
         String model = etModel.getText().toString().trim();
-        st.put("model", model.isEmpty() ? "deepseek-chat" : model);
+        st.put("model", model.isEmpty() ? "deepseek-v4-flash" : model);
         st.put("draftLang", Langs.ITEMS[spDraft.getSelectedItemPosition()][0]);
         st.put("incomingLang", Langs.ITEMS[spIncoming.getSelectedItemPosition()][0]);
         st.put("skipChineseIncoming", cbSkipZh.isChecked());
