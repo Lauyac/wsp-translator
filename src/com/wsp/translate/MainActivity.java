@@ -46,8 +46,11 @@ public class MainActivity extends Activity {
 
     private Settings st;
     private Handler ui;
-    private EditText etKey, etBase, etModel;
-    private Spinner spDraft, spIncoming;
+    private EditText etKey, etBase;
+    private Spinner spDraft, spIncoming, spModel;
+    /** 模型预设列表（按展示顺序）。 */
+    private static final String[] MODEL_PRESETS = {
+        "deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4.1-flash"};
     private CheckBox cbNotif, cbBubble, cbSkipZh, cbShowKey;
     private TextView tvResult, tvPerm;
     private LinearLayout updatePanel, updateActions;
@@ -105,10 +108,7 @@ public class MainActivity extends Activity {
         c1.addView(cbShowKey);
         c1.addView(label("API 地址"));
         etBase = input("默认 https://api.deepseek.com，兼容 OpenAI 网关/私有代理", false);
-        c1.addView(label("模型"));
-        etModel = input("默认 deepseek-v4-flash", false);
         c1.addView(etBase);
-        c1.addView(etModel);
 
         LinearLayout btnRow = row();
         btnRow.addView(primaryBtn("保存设置", new View.OnClickListener() {
@@ -122,9 +122,17 @@ public class MainActivity extends Activity {
         tvResult = statusBox(c1, "");
         tvResult.setVisibility(View.GONE);
 
-        // ---- ② 翻译行为 ----
+        // ---- ② 模型选择（独立栏位，下拉可选） ----
+        LinearLayout cModel = card(root, dp(20));
+        sectionTitle(cModel, "模型选择", "2");
+        cModel.addView(label("翻译使用的模型"));
+        spModel = modelSpinner();
+        cModel.addView(spinnerWrap(spModel));
+        cModel.addView(caption("列表为预设推荐项；历史保存过的自定义模型名会自动保留在列表末尾"));
+
+        // ---- ③ 翻译行为 ----
         LinearLayout c2 = card(root, dp(20));
-        sectionTitle(c2, "翻译行为", "2");
+        sectionTitle(c2, "翻译行为", "3");
         c2.addView(label("回复目标语言（草稿中文 → 外语）"));
         spDraft = spinner();
         c2.addView(spinnerWrap(spDraft));
@@ -140,7 +148,7 @@ public class MainActivity extends Activity {
 
         // ---- ③ 权限开启 ----
         LinearLayout c3 = card(root, dp(20));
-        sectionTitle(c3, "权限开启", "3");
+        sectionTitle(c3, "权限开启", "4");
         c3.addView(caption("首次安装必做，按用途开启对应权限"));
         tvPerm = new TextView(this);
         tvPerm.setTextSize(13);
@@ -177,7 +185,7 @@ public class MainActivity extends Activity {
 
         // ---- ④ 应用更新 ----
         LinearLayout c4 = card(root, dp(20));
-        sectionTitle(c4, "应用更新", "4");
+        sectionTitle(c4, "应用更新", "5");
 
         // 当前版本行：左侧名称、右侧徽章，单行对齐
         LinearLayout verRow = row();
@@ -273,7 +281,7 @@ public class MainActivity extends Activity {
 
         // ---- ⑤ 使用说明 ----
         LinearLayout c5 = card(root, dp(20));
-        sectionTitle(c5, "使用说明", "5");
+        sectionTitle(c5, "使用说明", "6");
         TextView help = new TextView(this);
         help.setTextSize(13);
         help.setTextColor(C_TEXT);
@@ -437,6 +445,28 @@ public class MainActivity extends Activity {
         return s;
     }
 
+    /** 模型下拉框：预设 4 项；历史保存的自定义模型名自动追加到末尾并选中。 */
+    private Spinner modelSpinner() {
+        Spinner s = new Spinner(this);
+        java.util.List<String> items = new java.util.ArrayList<>();
+        for (String m : MODEL_PRESETS) items.add(m);
+        int savedIdx = -1;
+        String saved = st.model();
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).equals(saved)) { savedIdx = i; break; }
+        }
+        if (savedIdx < 0 && saved != null && !saved.trim().isEmpty()) {
+            items.add(saved.trim()); // 自定义模型保留为额外选项
+            savedIdx = items.size() - 1;
+        }
+        s.setAdapter(new ArrayAdapter<>(this,
+            android.R.layout.simple_spinner_dropdown_item,
+            items.toArray(new String[0])));
+        s.setSelection(savedIdx < 0 ? 1 : savedIdx); // 默认 deepseek-v4-flash
+        s.setBackground(null);
+        return s;
+    }
+
     private CheckBox check(String t) {
         CheckBox c = new CheckBox(this);
         c.setText(t);
@@ -545,7 +575,6 @@ public class MainActivity extends Activity {
     private void load() {
         etKey.setText(st.apiKey());
         etBase.setText(st.baseUrl());
-        etModel.setText(st.model());
         spDraft.setSelection(Langs.indexOf(st.draftLang()));
         spIncoming.setSelection(Langs.indexOf(st.incomingLang()));
         cbSkipZh.setChecked(st.skipChineseIncoming());
@@ -772,8 +801,7 @@ public class MainActivity extends Activity {
         st.put("apiKey", etKey.getText().toString().trim());
         String base = etBase.getText().toString().trim();
         st.put("baseUrl", base.isEmpty() ? "https://api.deepseek.com" : base);
-        String model = etModel.getText().toString().trim();
-        st.put("model", model.isEmpty() ? "deepseek-v4-flash" : model);
+        st.put("model", String.valueOf(spModel.getSelectedItem()));
         st.put("draftLang", Langs.ITEMS[spDraft.getSelectedItemPosition()][0]);
         st.put("incomingLang", Langs.ITEMS[spIncoming.getSelectedItemPosition()][0]);
         st.put("skipChineseIncoming", cbSkipZh.isChecked());
