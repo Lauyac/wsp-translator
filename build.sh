@@ -12,7 +12,7 @@ PY=/c/Users/Administrator/.workbuddy/binaries/python/envs/default/Scripts/python
 
 # 版本号：第三段 0-9 递增，到 10 进位（1.0.10 -> 1.1.0），见 CHANGELOG.md
 VERSION=1.0.8
-VERSION_CODE=8
+VERSION_CODE=9
 
 export JAVA_HOME=$(ls -d $ENV/jdk/jdk-17*)
 export PATH="$JAVA_HOME/bin:$PATH"
