@@ -90,6 +90,7 @@ public class MainActivity extends Activity {
         // ---- ① 连接与凭据 ----
         LinearLayout c1 = card(root, dp(20));
         sectionTitle(c1, "连接与凭据", "1");
+        c1.addView(label("API Key"));
         etKey = input("DeepSeek API Key（sk-…）", true);
         c1.addView(etKey);
         cbShowKey = check("显示 API Key，方便核对是否输入正确");
@@ -102,8 +103,10 @@ public class MainActivity extends Activity {
             }
         });
         c1.addView(cbShowKey);
-        etBase = input("API 地址（默认 https://api.deepseek.com）", false);
-        etModel = input("模型（默认 deepseek-chat）", false);
+        c1.addView(label("API 地址"));
+        etBase = input("默认 https://api.deepseek.com，兼容 OpenAI 网关/私有代理", false);
+        c1.addView(label("模型"));
+        etModel = input("默认 deepseek-chat", false);
         c1.addView(etBase);
         c1.addView(etModel);
 
