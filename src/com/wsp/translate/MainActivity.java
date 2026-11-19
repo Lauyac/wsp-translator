@@ -175,31 +175,44 @@ public class MainActivity extends Activity {
         // ---- ④ 应用更新 ----
         LinearLayout c4 = card(root, dp(20));
         sectionTitle(c4, "应用更新", "4");
-        TextView tvVer = new TextView(this);
-        tvVer.setTextSize(13);
-        tvVer.setTextColor(C_SUB);
-        tvVer.setText("当前版本 " + versionName() + "（versionCode " + versionCode() + "）\n"
-            + "更新通过 GitHub Releases 获取：按 versionCode 判断新版本，确认后下载并强制 SHA-256 校验，校验失败不会安装。");
-        c4.addView(tvVer);
 
-        // 检查按钮
-        btnCheck = primaryBtn("检查更新（GitHub Releases）", new View.OnClickListener() {
+        // 当前版本行：左侧名称、右侧徽章，单行对齐
+        LinearLayout verRow = row();
+        TextView tvVerName = new TextView(this);
+        tvVerName.setText("当前版本");
+        tvVerName.setTextColor(C_SUB);
+        tvVerName.setTextSize(13);
+        verRow.addView(tvVerName,
+            new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView tvVerBadge = new TextView(this);
+        tvVerBadge.setText("v" + versionName() + " · code " + versionCode());
+        tvVerBadge.setTextColor(C_PRIMARY);
+        tvVerBadge.setTextSize(12);
+        tvVerBadge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tvVerBadge.setBackground(bg(C_PRIMARY_LIGHT, dp(10), 0));
+        tvVerBadge.setPadding(dp(10), dp(4), dp(10), dp(4));
+        verRow.addView(tvVerBadge);
+        c4.addView(verRow);
+
+        // 检查按钮（与其他卡片的按钮保持同一节奏：上 12dp）
+        btnCheck = primaryBtn("检查更新", new View.OnClickListener() {
             @Override public void onClick(View v) { checkUpdate(); }
         });
-        c4.addView(withMargin(btnCheck, 0, dp(10), 0, 0));
+        c4.addView(withMargin(btnCheck, 0, dp(12), 0, 0));
 
-        // 更新状态行
+        // 更新状态行（与卡片内文字左对齐，去掉多余内边距）
         tvUpdate = new TextView(this);
         tvUpdate.setTextSize(13);
-        tvUpdate.setTextColor(C_TEXT);
-        tvUpdate.setPadding(dp(4), dp(4), dp(4), dp(4));
+        tvUpdate.setTextColor(C_SUB);
+        tvUpdate.setPadding(dp(2), dp(10), dp(2), dp(2));
+        tvUpdate.setVisibility(View.GONE);
         c4.addView(tvUpdate);
 
         // 新版本详情面板（发现新版本时显示）
         updatePanel = new LinearLayout(this);
         updatePanel.setOrientation(LinearLayout.VERTICAL);
         updatePanel.setBackground(bg(C_PRIMARY_LIGHT, dp(12), 0));
-        updatePanel.setPadding(dp(14), dp(12), dp(14), dp(12));
+        updatePanel.setPadding(dp(14), dp(12), dp(14), dp(14));
 
         tvUpdateTitle = new TextView(this);
         tvUpdateTitle.setTextColor(C_PRIMARY_DARK);
@@ -212,7 +225,7 @@ public class MainActivity extends Activity {
         notesLabel.setTextColor(C_SUB);
         notesLabel.setTextSize(11);
         notesLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        notesLabel.setPadding(0, dp(10), 0, dp(4));
+        notesLabel.setPadding(0, dp(12), 0, dp(6));
         updatePanel.addView(notesLabel);
 
         tvUpdateNotes = new TextView(this);
@@ -224,11 +237,11 @@ public class MainActivity extends Activity {
         c4.addView(withMargin(updatePanel, 0, dp(10), 0, 0));
         updatePanel.setVisibility(View.GONE);
 
-        // 下载进度条（确认下载后显示）
+        // 下载进度条（确认下载后显示，与面板同宽同节奏）
         pbUpdate = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         pbUpdate.setMax(100);
         pbUpdate.getProgressDrawable().setColorFilter(C_PRIMARY, android.graphics.PorterDuff.Mode.SRC_IN);
-        c4.addView(withMargin(pbUpdate, 0, dp(8), 0, 0));
+        c4.addView(withMargin(pbUpdate, 0, dp(10), 0, 0));
         pbUpdate.setVisibility(View.GONE);
 
         // 确认 / 取消按钮
@@ -546,6 +559,7 @@ public class MainActivity extends Activity {
 
     /** 阶段一：检查版本信息，发现新版本时展示版本信息与更新说明，等待用户确认。 */
     private void checkUpdate() {
+        tvUpdate.setVisibility(View.VISIBLE);
         tvUpdate.setText("正在检查更新…");
         tvUpdate.setTextColor(C_SUB);
         updatePanel.setVisibility(View.GONE);
@@ -562,12 +576,14 @@ public class MainActivity extends Activity {
                     public void run() {
                         btnCheck.setEnabled(true);
                         if (!r.ok) {
+                            tvUpdate.setVisibility(View.VISIBLE);
                             tvUpdate.setText(r.message);
                             tvUpdate.setTextColor(C_ERR);
                             return;
                         }
                         if (r.info == null) {
                             // 已是最新版本
+                            tvUpdate.setVisibility(View.VISIBLE);
                             tvUpdate.setText("✓ " + r.message);
                             tvUpdate.setTextColor(C_OK);
                             return;
@@ -577,6 +593,7 @@ public class MainActivity extends Activity {
                         tvUpdateTitle.setText("发现新版本 v" + r.info.versionName
                             + "（versionCode " + r.info.versionCode + "）");
                         tvUpdateNotes.setText(formatNotes(r.info.notes));
+                        tvUpdate.setVisibility(View.VISIBLE);
                         tvUpdate.setText("请阅读上方更新内容，确认无误后再下载安装。");
                         tvUpdate.setTextColor(C_SUB);
                         updatePanel.setVisibility(View.VISIBLE);
@@ -596,6 +613,7 @@ public class MainActivity extends Activity {
         updateActions.setVisibility(View.GONE);
         pbUpdate.setVisibility(View.VISIBLE);
         pbUpdate.setProgress(0);
+        tvUpdate.setVisibility(View.VISIBLE);
         tvUpdate.setTextColor(C_SUB);
         final MainActivity act = this;
         final Updater.Info info = pendingInfo;
@@ -622,10 +640,12 @@ public class MainActivity extends Activity {
                         btnCancel.setEnabled(true);
                         btnCheck.setEnabled(true);
                         if (r.apkFile != null) {
+                            tvUpdate.setVisibility(View.VISIBLE);
                             tvUpdate.setText("✓ " + r.message);
                             tvUpdate.setTextColor(C_OK);
                             installUpdate(r.apkFile);
                         } else {
+                            tvUpdate.setVisibility(View.VISIBLE);
                             tvUpdate.setText(r.message);
                             tvUpdate.setTextColor(C_ERR);
                             updatePanel.setVisibility(View.GONE);
@@ -641,6 +661,7 @@ public class MainActivity extends Activity {
         pendingInfo = null;
         updatePanel.setVisibility(View.GONE);
         updateActions.setVisibility(View.GONE);
+        tvUpdate.setVisibility(View.VISIBLE);
         tvUpdate.setText("已跳过本次更新，可随时再点「检查更新」");
         tvUpdate.setTextColor(C_SUB);
     }
