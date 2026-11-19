@@ -22,6 +22,7 @@ import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -48,7 +49,12 @@ public class MainActivity extends Activity {
     private EditText etKey, etBase, etModel;
     private Spinner spDraft, spIncoming;
     private CheckBox cbNotif, cbBubble, cbSkipZh, cbShowKey;
-    private TextView tvResult, tvPerm, tvUpdate;
+    private TextView tvResult, tvPerm;
+    private LinearLayout updatePanel, updateActions;
+    private TextView tvUpdateTitle, tvUpdateNotes, tvUpdate;
+    private ProgressBar pbUpdate;
+    private Button btnCheck, btnDownload, btnCancel;
+    private Updater.Info pendingInfo;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -173,16 +179,70 @@ public class MainActivity extends Activity {
         tvVer.setTextSize(13);
         tvVer.setTextColor(C_SUB);
         tvVer.setText("当前版本 " + versionName() + "（versionCode " + versionCode() + "）\n"
-            + "更新通过 GitHub Releases 获取：按 versionCode 判断新版本，下载后强制 SHA-256 校验，校验失败不会安装。");
+            + "更新通过 GitHub Releases 获取：按 versionCode 判断新版本，确认后下载并强制 SHA-256 校验，校验失败不会安装。");
         c4.addView(tvVer);
+
+        // 检查按钮
+        btnCheck = primaryBtn("检查更新（GitHub Releases）", new View.OnClickListener() {
+            @Override public void onClick(View v) { checkUpdate(); }
+        });
+        c4.addView(withMargin(btnCheck, 0, dp(10), 0, 0));
+
+        // 更新状态行
         tvUpdate = new TextView(this);
         tvUpdate.setTextSize(13);
         tvUpdate.setTextColor(C_TEXT);
-        tvUpdate.setPadding(dp(4), dp(8), dp(4), dp(4));
+        tvUpdate.setPadding(dp(4), dp(4), dp(4), dp(4));
         c4.addView(tvUpdate);
-        c4.addView(withMargin(primaryBtn("检查更新（GitHub Releases）", new View.OnClickListener() {
-            @Override public void onClick(View v) { checkUpdate(); }
-        }), 0, dp(8), 0, 0));
+
+        // 新版本详情面板（发现新版本时显示）
+        updatePanel = new LinearLayout(this);
+        updatePanel.setOrientation(LinearLayout.VERTICAL);
+        updatePanel.setBackground(bg(C_PRIMARY_LIGHT, dp(12), 0));
+        updatePanel.setPadding(dp(14), dp(12), dp(14), dp(12));
+
+        tvUpdateTitle = new TextView(this);
+        tvUpdateTitle.setTextColor(C_PRIMARY_DARK);
+        tvUpdateTitle.setTextSize(15);
+        tvUpdateTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        updatePanel.addView(tvUpdateTitle);
+
+        TextView notesLabel = new TextView(this);
+        notesLabel.setText("本次更新内容");
+        notesLabel.setTextColor(C_SUB);
+        notesLabel.setTextSize(11);
+        notesLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        notesLabel.setPadding(0, dp(10), 0, dp(4));
+        updatePanel.addView(notesLabel);
+
+        tvUpdateNotes = new TextView(this);
+        tvUpdateNotes.setTextColor(C_TEXT);
+        tvUpdateNotes.setTextSize(13);
+        tvUpdateNotes.setLineSpacing(dp(3), 1f);
+        updatePanel.addView(tvUpdateNotes);
+
+        c4.addView(withMargin(updatePanel, 0, dp(10), 0, 0));
+        updatePanel.setVisibility(View.GONE);
+
+        // 下载进度条（确认下载后显示）
+        pbUpdate = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        pbUpdate.setMax(100);
+        pbUpdate.getProgressDrawable().setColorFilter(C_PRIMARY, android.graphics.PorterDuff.Mode.SRC_IN);
+        c4.addView(withMargin(pbUpdate, 0, dp(8), 0, 0));
+        pbUpdate.setVisibility(View.GONE);
+
+        // 确认 / 取消按钮
+        updateActions = row();
+        btnDownload = primaryBtn("下载并安装", new View.OnClickListener() {
+            @Override public void onClick(View v) { confirmDownload(); }
+        });
+        btnCancel = outlineBtn("暂不更新", new View.OnClickListener() {
+            @Override public void onClick(View v) { dismissUpdate(); }
+        });
+        updateActions.addView(btnDownload, half());
+        updateActions.addView(btnCancel, half());
+        c4.addView(updateActions);
+        updateActions.setVisibility(View.GONE);
 
         // ---- ⑤ 使用说明 ----
         LinearLayout c5 = card(root, dp(20));
@@ -482,23 +542,134 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** 检查更新：后台执行 Updater.check()，成功且通过校验则进入安装流程。 */
+    // ==================== 应用更新（两阶段） ====================
+
+    /** 阶段一：检查版本信息，发现新版本时展示版本信息与更新说明，等待用户确认。 */
     private void checkUpdate() {
         tvUpdate.setText("正在检查更新…");
+        tvUpdate.setTextColor(C_SUB);
+        updatePanel.setVisibility(View.GONE);
+        updateActions.setVisibility(View.GONE);
+        pbUpdate.setVisibility(View.GONE);
+        btnCheck.setEnabled(false);
         final MainActivity act = this;
         Translator.submit(new Runnable() {
             @Override
             public void run() {
-                final Updater.Result r = Updater.check(act);
+                final Updater.Result r = Updater.checkInfo(act);
                 ui.post(new Runnable() {
                     @Override
                     public void run() {
-                        tvUpdate.setText(r.message);
-                        if (r.apkFile != null) installUpdate(r.apkFile);
+                        btnCheck.setEnabled(true);
+                        if (!r.ok) {
+                            tvUpdate.setText(r.message);
+                            tvUpdate.setTextColor(C_ERR);
+                            return;
+                        }
+                        if (r.info == null) {
+                            // 已是最新版本
+                            tvUpdate.setText("✓ " + r.message);
+                            tvUpdate.setTextColor(C_OK);
+                            return;
+                        }
+                        // 发现新版本：展示版本信息与更新说明
+                        pendingInfo = r.info;
+                        tvUpdateTitle.setText("发现新版本 v" + r.info.versionName
+                            + "（versionCode " + r.info.versionCode + "）");
+                        tvUpdateNotes.setText(formatNotes(r.info.notes));
+                        tvUpdate.setText("请阅读上方更新内容，确认无误后再下载安装。");
+                        tvUpdate.setTextColor(C_SUB);
+                        updatePanel.setVisibility(View.VISIBLE);
+                        updateActions.setVisibility(View.VISIBLE);
                     }
                 });
             }
         });
+    }
+
+    /** 阶段二：用户确认后开始下载（带进度），SHA-256 校验通过后自动进入安装。 */
+    private void confirmDownload() {
+        if (pendingInfo == null) return;
+        btnDownload.setEnabled(false);
+        btnCancel.setEnabled(false);
+        btnCheck.setEnabled(false);
+        updateActions.setVisibility(View.GONE);
+        pbUpdate.setVisibility(View.VISIBLE);
+        pbUpdate.setProgress(0);
+        tvUpdate.setTextColor(C_SUB);
+        final MainActivity act = this;
+        final Updater.Info info = pendingInfo;
+        Translator.submit(new Runnable() {
+            @Override
+            public void run() {
+                final Updater.Result r = Updater.download(act, info, new Updater.Progress() {
+                    @Override public void onProgress(final long read, final long total) {
+                        ui.post(new Runnable() {
+                            @Override public void run() {
+                                int pct = total > 0 ? (int) (read * 100 / total) : 0;
+                                pbUpdate.setProgress(pct);
+                                tvUpdate.setText("正在下载 v" + info.versionName + "… "
+                                    + pct + "%（" + humanSize(read) + " / " + humanSize(total) + "）");
+                            }
+                        });
+                    }
+                });
+                ui.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        pbUpdate.setVisibility(View.GONE);
+                        btnDownload.setEnabled(true);
+                        btnCancel.setEnabled(true);
+                        btnCheck.setEnabled(true);
+                        if (r.apkFile != null) {
+                            tvUpdate.setText("✓ " + r.message);
+                            tvUpdate.setTextColor(C_OK);
+                            installUpdate(r.apkFile);
+                        } else {
+                            tvUpdate.setText(r.message);
+                            tvUpdate.setTextColor(C_ERR);
+                            updatePanel.setVisibility(View.GONE);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /** 用户选择暂不更新：收起详情面板。 */
+    private void dismissUpdate() {
+        pendingInfo = null;
+        updatePanel.setVisibility(View.GONE);
+        updateActions.setVisibility(View.GONE);
+        tvUpdate.setText("已跳过本次更新，可随时再点「检查更新」");
+        tvUpdate.setTextColor(C_SUB);
+    }
+
+    /** 轻量 Markdown 清理：去标记符号、列表符转圆点，保留段落结构。 */
+    private String formatNotes(String md) {
+        if (md == null) return "";
+        StringBuilder out = new StringBuilder();
+        String[] lines = md.split("\n");
+        for (String line : lines) {
+            String s = line
+                .replace("**", "").replace("`", "")
+                .replaceFirst("^#+\\s*", "")
+                .replaceFirst("^[-*]\\s+", "· ")
+                .replaceFirst("^\\d+\\.\\s+", "· ");
+            s = s.trim();
+            if (s.isEmpty() && (out.length() == 0
+                || out.charAt(out.length() - 1) == '\n')) continue;
+            out.append(s).append('\n');
+        }
+        String r = out.toString().trim();
+        if (r.length() > 1500) r = r.substring(0, 1500) + "\n…（说明过长已截断，完整内容见 GitHub Release）";
+        return r;
+    }
+
+    private String humanSize(long b) {
+        if (b <= 0) return "0KB";
+        if (b < 1024 * 1024) return String.format("%.0fKB", b / 1024f);
+        return String.format("%.1fMB", b / 1024f / 1024f);
     }
 
     /** 仅在 SHA-256 校验通过后被调用；先确认"安装未知应用"权限。 */

@@ -14,37 +14,54 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 /**
- * 基于 GitHub Releases 的在线更新检查。
+ * 基于 GitHub Releases 的在线更新（两阶段）。
  *
- * 流程与规则：
- * 1) 调 GitHub Releases API 获取最新 Release 的资产清单；
- * 2) 从资产中的 update.json 读取 versionName / versionCode / APK 文件名 / SHA-256；
- * 3) 版本判断只基于 versionCode，且服务端发布流程必须保证 versionCode 单调递增；
- * 4) 下载 APK 时流式计算 SHA-256，与 update.json 中的值比对；
- * 5) 校验失败：中止更新、删除已下载文件、提示错误，绝不进入安装流程。
+ * 阶段一 checkInfo()：获取最新 Release 信息（版本号、versionCode、更新说明），
+ *   只读取清单、不下载数据；由界面展示版本信息与变更内容，用户确认后才进入阶段二。
+ * 阶段二 download()：用户确认后下载 APK，流式计算 SHA-256 并展示进度；
+ *   校验失败：中止更新、删除已下载文件、提示错误，绝不进入安装流程。
+ *
+ * 版本判断只基于 versionCode，发布流程保证其单调递增。
  */
 public final class Updater {
 
-    /** TODO: 仓库公开后改为实际仓库（"用户名/仓库名"）。 */
     public static final String UPDATE_REPO = "Lauyac/wsp-translator";
 
     /** 单个更新包大小上限：100MB，防止异常资产撑爆存储。 */
     private static final long MAX_APK_BYTES = 100L * 1024 * 1024;
 
+    /** 阶段一产物：新版本完整信息。 */
+    public static final class Info {
+        public final String versionName;
+        public final int versionCode;
+        public final String notes;      // Release 描述，作为更新说明展示
+        public final String apkName;
+        public final String apkUrl;
+        public final String sha256;
+        Info(String v, int c, String n, String a, String u, String s) {
+            versionName = v; versionCode = c; notes = n;
+            apkName = a; apkUrl = u; sha256 = s;
+        }
+    }
+
     public static final class Result {
         public final boolean ok;
         public final String message;
-        public final File apkFile;        // 仅在版本更新且 SHA-256 校验通过时非空
-        public final String newVersionName;
-        private Result(boolean ok, String message, File apkFile, String newVersionName) {
-            this.ok = ok; this.message = message;
-            this.apkFile = apkFile; this.newVersionName = newVersionName;
+        public final Info info;           // 有新版本时非空（阶段一）
+        public final File apkFile;        // 校验通过时非空（阶段二）
+        private Result(boolean ok, String message, Info info, File apkFile) {
+            this.ok = ok; this.message = message; this.info = info; this.apkFile = apkFile;
         }
-        public static Result ok(String msg, File f, String v) { return new Result(true, msg, f, v); }
-        public static Result fail(String msg) { return new Result(false, msg, null, null); }
+        static Result ok(String msg, Info info, File f) { return new Result(true, msg, info, f); }
+        static Result fail(String msg) { return new Result(false, msg, null, null); }
     }
 
-    /** GitHub API 返回 404（仓库无 Release）时的专用异常。 */
+    /** 下载进度回调（在后台线程上回调）。 */
+    public interface Progress {
+        void onProgress(long readBytes, long totalBytes);
+    }
+
+    /** GitHub API 返回 4xx/5xx 时的专用异常。 */
     private static class HttpCodeException extends Exception {
         final int code;
         HttpCodeException(int code) { super("HTTP " + code); this.code = code; }
@@ -52,7 +69,10 @@ public final class Updater {
 
     private Updater() { }
 
-    public static Result check(Context ctx) {
+    // ==================== 阶段一：检查版本信息 ====================
+
+    /** 检查最新版本信息；有新版本时返回 Info（含更新说明），不下载数据。 */
+    public static Result checkInfo(Context ctx) {
         try {
             // 1. 最新 Release 的资产清单
             String rel = httpGet(
@@ -86,7 +106,6 @@ public final class Updater {
                 return Result.fail("update.json 缺少 SHA-256 校验值，出于安全考虑已中止更新");
             }
             if (!wantApk.equals(apkName)) {
-                // 清单声明的 APK 与 Release 中的资产不一致：拒绝更新
                 return Result.fail("update.json 与 Release 资产不一致，已中止更新检查");
             }
 
@@ -94,28 +113,13 @@ public final class Updater {
             int cur = ctx.getPackageManager()
                 .getPackageInfo(ctx.getPackageName(), 0).versionCode;
             if (newCode <= cur) {
-                return Result.ok("已是最新版本（versionCode " + cur + " ≥ " + newCode + "）", null, null);
+                return Result.ok("已是最新版本（versionCode " + cur + "）", null, null);
             }
 
-            // 4. 下载更新包并流式计算 SHA-256
-            File dir = new File(ctx.getFilesDir(), "update");
-            if (!dir.exists()) dir.mkdirs();
-            final File f = new File(dir, wantApk);
-            String actual;
-            try {
-                actual = downloadAndHash(apkUrl, f, MAX_APK_BYTES);
-            } catch (Exception e) {
-                f.delete(); // 下载中断/超限：不留半包
-                throw e;
-            }
-
-            // 5. SHA-256 校验：失败即中止，删除文件，绝不安装
-            if (!actual.equalsIgnoreCase(sha)) {
-                f.delete();
-                return Result.fail("SHA-256 校验失败（期望 " + shortHash(sha)
-                    + "，实际 " + shortHash(actual) + "），已中止更新并删除下载文件");
-            }
-            return Result.ok("已下载 v" + newName + " 并通过 SHA-256 校验，可安装", f, newName);
+            // 4. 更新说明：取 Release 描述（发布时由 release 流程写入）
+            String notes = j.optString("body", "").trim();
+            if (notes.isEmpty()) notes = "（本次发布未附更新说明）";
+            return Result.ok("发现新版本", new Info(newName, newCode, notes, wantApk, apkUrl, sha), null);
         } catch (HttpCodeException e) {
             if (e.code == 404) {
                 return Result.fail("暂无可用发布版本（仓库尚未发布任何 Release）");
@@ -125,6 +129,40 @@ public final class Updater {
             return Result.fail("更新检查失败: " + Translator.friendlyError(e));
         }
     }
+
+    // ==================== 阶段二：确认后下载 ====================
+
+    /**
+     * 下载 Info 描述的更新包并流式计算 SHA-256。
+     * 校验失败或下载异常时删除半包并返回失败，绝不返回可安装的损坏文件。
+     */
+    public static Result download(Context ctx, Info info, Progress progress) {
+        if (info == null || info.apkUrl == null || info.sha256 == null) {
+            return Result.fail("更新信息无效，请重新检查更新");
+        }
+        try {
+            File dir = new File(ctx.getFilesDir(), "update");
+            if (!dir.exists()) dir.mkdirs();
+            final File f = new File(dir, info.apkName);
+            String actual;
+            try {
+                actual = downloadAndHash(info.apkUrl, f, MAX_APK_BYTES, progress);
+            } catch (Exception e) {
+                f.delete(); // 下载中断/超限：不留半包
+                throw e;
+            }
+            if (!actual.equalsIgnoreCase(info.sha256)) {
+                f.delete();
+                return Result.fail("SHA-256 校验失败（期望 " + shortHash(info.sha256)
+                    + "，实际 " + shortHash(actual) + "），已中止更新并删除下载文件");
+            }
+            return Result.ok("已下载 v" + info.versionName + " 并通过 SHA-256 校验，可安装", null, f);
+        } catch (Exception e) {
+            return Result.fail("下载失败: " + Translator.friendlyError(e));
+        }
+    }
+
+    // ==================== 网络与工具 ====================
 
     private static String httpGet(String url, String accept) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
@@ -141,8 +179,8 @@ public final class Updater {
         return body;
     }
 
-    /** 下载到文件并同步计算 SHA-256，超限即中止。 */
-    private static String downloadAndHash(String url, File f, long maxBytes) throws Exception {
+    /** 下载到文件并同步计算 SHA-256，超限即中止；进度通过回调上报。 */
+    private static String downloadAndHash(String url, File f, long maxBytes, Progress progress) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setRequestMethod("GET");
         c.setConnectTimeout(15000);
@@ -151,25 +189,27 @@ public final class Updater {
         c.setRequestProperty("Accept", "application/octet-stream");
         int code = c.getResponseCode();
         if (code >= 400) throw new HttpCodeException(code);
+        long total = c.getContentLengthLong();
         InputStream in = c.getInputStream();
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         FileOutputStream out = new FileOutputStream(f);
         byte[] buf = new byte[8192];
-        long total = 0;
+        long done = 0;
         try {
             int n;
             while ((n = in.read(buf)) > 0) {
-                total += n;
-                if (total > maxBytes) throw new Exception("更新包超出大小限制，已中止下载");
+                done += n;
+                if (done > maxBytes) throw new Exception("更新包超出大小限制，已中止下载");
                 md.update(buf, 0, n);
                 out.write(buf, 0, n);
+                if (progress != null && total > 0) progress.onProgress(done, total);
             }
         } finally {
             out.close();
             in.close();
             c.disconnect();
         }
-        if (total == 0) throw new Exception("下载内容为空，已中止更新");
+        if (done == 0) throw new Exception("下载内容为空，已中止更新");
         return hex(md.digest());
     }
 
