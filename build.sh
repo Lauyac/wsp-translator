@@ -1,5 +1,5 @@
 #!/bin/bash
-# WhatsApp 翻译助手 APK 构建脚本（无 Gradle，纯 SDK 工具链）
+# WA 翻译助手 APK 构建脚本（无 Gradle，纯 SDK 工具链）
 set -e
 BASE=/c/Users/Administrator/Desktop/skill
 ENV=$BASE/.build-env
@@ -11,7 +11,7 @@ OUT=$PROJ/out
 PY=/c/Users/Administrator/.workbuddy/binaries/python/envs/default/Scripts/python.exe
 
 # 版本号：第三段 0-9 递增，到 10 进位（1.0.10 -> 1.1.0），见 CHANGELOG.md
-VERSION=1.0.7
+VERSION=1.0.8
 VERSION_CODE=8
 
 export JAVA_HOME=$(ls -d $ENV/jdk/jdk-17*)
