@@ -99,7 +99,10 @@ public class FloatService extends AccessibilityService {
         ui = new Handler(Looper.getMainLooper());
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         instance = this;
-        if (new Settings(this).bubbleEnabled()) addBubble();
+        // 智能显隐开启时按当前真实前台决定是否显示：服务重启/开机时若不在聊天应用内不显示，
+        // 避免悬浮球先常驻、等第一次离开事件才被隐藏
+        Settings st = new Settings(this);
+        if (st.bubbleEnabled() && (!st.bubbleAutoHide() || activeWindowIsWa())) addBubble();
     }
 
     @Override
@@ -126,9 +129,10 @@ public class FloatService extends AccessibilityService {
         String pkg = pkgCs.toString();
         boolean wa = isWa(pkg);
 
-        // 悬浮球智能显隐：WhatsApp 的任意窗口事件立即显示并取消待执行的隐藏；
-        // 只有「真实应用」（可启动的应用，如桌面/其他 App）的窗口切换才安排延迟隐藏。
-        // 系统弹层（状态栏下拉/输入法等，无启动意图）不参与判断，避免误隐藏后无法恢复。
+        // 悬浮球智能显隐：WhatsApp 的任意事件立即显示并取消待执行的隐藏；
+        // 其他真实应用的窗口切换只「安排」延迟隐藏，真正隐藏与否由 pendingHide
+        // 执行时按当前活动窗口复核——事件时序（冷启动迟滞、转场乱序）不可靠，
+        // 以 getRootInActiveWindow() 的真实前台为准。
         Settings st = new Settings(this);
         if (st.bubbleEnabled() && st.bubbleAutoHide()) {
             if (wa) {
@@ -137,8 +141,13 @@ public class FloatService extends AccessibilityService {
                 if (bubble == null || bubble.getParent() == null) addBubble();
             } else if (e.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
                 && isRealApp(pkg)) {
-                ui.removeCallbacks(pendingHide);
-                ui.postDelayed(pendingHide, HIDE_DELAY_MS);
+                if (activeWindowIsWa()) {
+                    // 转场期事件乱序：事件包名已变成别的应用，但前台仍是 WhatsApp，不安排隐藏
+                    lastWaSeenMs = SystemClock.elapsedRealtime();
+                } else {
+                    ui.removeCallbacks(pendingHide);
+                    ui.postDelayed(pendingHide, HIDE_DELAY_MS);
+                }
             }
         }
 
@@ -148,20 +157,47 @@ public class FloatService extends AccessibilityService {
         if (isWa(root.getPackageName().toString())) lastWaRoot = root;
     }
 
-    /** 延迟隐藏：到点后复核——若刚见过 WhatsApp 活动（防抖窗口内）则不隐藏。 */
+    /** 延迟隐藏：执行时按「当前活动窗口」的真实前台复核，而不是依赖事件到达时序。 */
     private final Runnable pendingHide = new Runnable() {
         @Override public void run() {
             Settings s = new Settings(FloatService.this);
             if (!s.bubbleEnabled() || !s.bubbleAutoHide()) return;
-            if (SystemClock.elapsedRealtime() - lastWaSeenMs < HIDE_GUARD_MS) return;
+            String active = activeWindowPkg();
+            if (active != null) {
+                if (isWa(active)) {
+                    // 前台仍是 WhatsApp：只是转场/事件乱序，取消隐藏并刷新活动时间
+                    lastWaSeenMs = SystemClock.elapsedRealtime();
+                    return;
+                }
+                // 前台确认是其他应用（桌面/真实 App）→ 执行隐藏
+            } else if (SystemClock.elapsedRealtime() - lastWaSeenMs < HIDE_GUARD_MS) {
+                // 拿不到活动窗口（瞬间转场）时退回时间防抖兜底，避免误隐藏
+                return;
+            }
             boolean attached = bubble != null && bubble.getParent() != null;
             if (attached) removeBubble();
         }
     };
 
     private static final long HIDE_DELAY_MS = 500;   // 非聊天应用窗口切换后的延迟隐藏
-    private static final long HIDE_GUARD_MS = 1500;  // 距最近 WhatsApp 活动的防抖窗口
+    private static final long HIDE_GUARD_MS = 1500;  // 拿不到活动窗口时的时间防抖兜底
     private long lastWaSeenMs = 0L;
+
+    /** 当前活动窗口（真实前台）的包名；拿不到时返回 null。 */
+    private String activeWindowPkg() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null || root.getPackageName() == null) return null;
+            return root.getPackageName().toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean activeWindowIsWa() {
+        String p = activeWindowPkg();
+        return p != null && isWa(p);
+    }
 
     /** 是否为可启动的真实应用（有桌面入口）；systemui、输入法等系统组件返回 false。 */
     private boolean isRealApp(String pkg) {
@@ -181,7 +217,14 @@ public class FloatService extends AccessibilityService {
         if (s == null || s.wm == null) return;
         s.ui.post(new Runnable() {
             @Override public void run() {
-                if (enabled) s.addBubble(); else s.removeBubble();
+                if (enabled) {
+                    // 智能显隐开启且前台不是聊天应用时不立即显示，交给事件流在进入聊天应用时显示
+                    Settings st = new Settings(s);
+                    if (st.bubbleAutoHide() && !s.activeWindowIsWa()) return;
+                    s.addBubble();
+                } else {
+                    s.removeBubble();
+                }
             }
         });
     }
