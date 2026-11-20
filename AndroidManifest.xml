@@ -23,6 +23,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".HistoryActivity"
+            android:exported="false"
+            android:label="翻译历史" />
+
         <provider
             android:name=".UpdateFileProvider"
             android:authorities="com.wsp.translate.update"

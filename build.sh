@@ -49,8 +49,8 @@ fi
 if [ -n "$JAVA_HOME" ]; then export PATH="$JAVA_HOME/bin:$PATH"; fi
 
 # 版本号：第三段 0-9 递增，到 10 进位（1.0.10 -> 1.1.0），见 CHANGELOG.md
-VERSION=1.2.4
-VERSION_CODE=26
+VERSION=1.3.0
+VERSION_CODE=27
 
 rm -rf "$OUT"
 mkdir -p "$OUT/gen" "$OUT/classes" "$OUT/dex"

@@ -24,8 +24,13 @@ public class Translator {
         public final boolean ok;
         public final String text;
         public final boolean cached;
+        /** 可重试错误（超时/断网/429/5xx），供通知链路自动重试判断。 */
+        public final boolean retryable;
         public Result(boolean ok, String text, boolean cached) {
-            this.ok = ok; this.text = text; this.cached = cached;
+            this(ok, text, cached, false);
+        }
+        public Result(boolean ok, String text, boolean cached, boolean retryable) {
+            this.ok = ok; this.text = text; this.cached = cached; this.retryable = retryable;
         }
     }
 
@@ -91,8 +96,19 @@ public class Translator {
             synchronized (CACHE) { CACHE.put(key, out); }
             return new Result(true, out, false);
         } catch (Exception e) {
-            return new Result(false, friendlyError(e), false);
+            return new Result(false, friendlyError(e), false, isRetryable(e));
         }
+    }
+
+    /** 判定是否为「稍后自动重试有意义」的临时性错误（配置类错误不重试）。 */
+    static boolean isRetryable(Exception e) {
+        if (e instanceof java.net.SocketTimeoutException
+            || e instanceof java.net.UnknownHostException
+            || e instanceof java.net.ConnectException) {
+            return true;
+        }
+        String m = e.getMessage() == null ? "" : e.getMessage();
+        return m.contains("HTTP 429") || m.contains("HTTP 5");
     }
 
     private static String model(Settings s, String override) {

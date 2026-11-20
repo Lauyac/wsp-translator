@@ -31,6 +31,9 @@ public class NLService extends NotificationListenerService {
     private static final long DEDUP_MS = 30000;
     /** 同联系人多条消息的合并窗口：最后一条消息到达后延迟此时长再发起翻译。 */
     private static final long MERGE_MS = 500;
+    /** 临时性失败（超时/断网/429/5xx）的自动重试次数与退避间隔。 */
+    private static final int RETRY_MAX = 2;
+    private static final long[] RETRY_DELAY_MS = {3000, 10000};
 
     /** 同一联系人等待合并的消息批次。 */
     private static class Pending {
@@ -118,7 +121,7 @@ public class NLService extends NotificationListenerService {
         }
     }
 
-    /** 合并窗口结束：把该联系人的所有待译消息合并成一次请求。 */
+    /** 合并窗口结束：把该联系人的所有待译消息合并成一次请求；临时性失败自动重试。 */
     private void flush(String title, String pkg) {
         final String combined;
         synchronized (pending) {
@@ -126,14 +129,38 @@ public class NLService extends NotificationListenerService {
             if (p == null || p.text.length() == 0) return;
             combined = p.text.toString();
         }
+        translateWithRetry(title, combined, pkg, 0);
+    }
+
+    /**
+     * 翻译并按需重试：超时/断网/限流/5xx 等临时错误按退避间隔自动重试，
+     * 配置类错误（Key 无效、余额不足等）直接失败不重试。
+     */
+    private void translateWithRetry(final String title, final String combined,
+                                    final String pkg, final int attempt) {
         Translator.submit(new Runnable() {
             @Override
             public void run() {
                 Settings s = new Settings(NLService.this);
                 if (!s.notifEnabled() || s.apiKey().trim().isEmpty()) return;
                 Translator.Result r = Translator.translate(s, combined, s.incomingLang());
-                if (r.ok) postTranslation(title, combined, r.text, pkg);
-                else postFailure(title, combined, r.text);
+                if (r.ok) {
+                    HistoryStore.record(NLService.this, HistoryStore.TYPE_INCOMING,
+                        title, combined, r.text, true);
+                    postTranslation(title, combined, r.text, pkg);
+                    return;
+                }
+                if (r.retryable && attempt < RETRY_MAX) {
+                    debounce.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            translateWithRetry(title, combined, pkg, attempt + 1);
+                        }
+                    }, RETRY_DELAY_MS[Math.min(attempt, RETRY_DELAY_MS.length - 1)]);
+                    return;
+                }
+                HistoryStore.record(NLService.this, HistoryStore.TYPE_INCOMING,
+                    title, combined, r.text, false);
+                postFailure(title, combined, r.text);
             }
         });
     }

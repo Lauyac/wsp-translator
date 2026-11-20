@@ -41,6 +41,8 @@ public class Settings {
     public String incomingLang(){ return p.getString("incomingLang", "zh-CN"); }
     public boolean notifEnabled()   { return p.getBoolean("notifEnabled", true); }
     public boolean bubbleEnabled()  { return p.getBoolean("bubbleEnabled", true); }
+    /** 悬浮球仅在聊天应用前台显示（离开自动隐藏）；默认开启。 */
+    public boolean bubbleAutoHide() { return p.getBoolean("bubbleAutoHide", true); }
     public boolean skipChineseIncoming() { return p.getBoolean("skipChineseIncoming", true); }
 
     /** 悬浮球吸附后的屏幕位置（像素）；未记录时返回 -1。 */

@@ -121,10 +121,31 @@ public class FloatService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
         CharSequence pkgCs = e == null ? null : e.getPackageName();
-        if (pkgCs == null || !isWa(pkgCs.toString())) return;
+        if (pkgCs == null) return;
+        String pkg = pkgCs.toString();
+        // 前台窗口切换：按需显示/隐藏悬浮球（智能显隐）
+        if (e.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            updateBubbleVisibility(pkg);
+        }
+        if (!isWa(pkg)) return;
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null || root.getPackageName() == null) return;
         if (isWa(root.getPackageName().toString())) lastWaRoot = root;
+    }
+
+    /**
+     * 悬浮球智能显隐：开启「仅聊天应用内显示」时，离开 WhatsApp 自动隐藏（连带收起面板），
+     * 回到聊天应用自动恢复；关闭该选项时保持全局常驻。悬浮球总开关关闭则始终隐藏。
+     */
+    private void updateBubbleVisibility(String fg) {
+        Settings st = new Settings(this);
+        boolean want = st.bubbleEnabled() && (!st.bubbleAutoHide() || isWa(fg));
+        boolean attached = bubble != null && bubble.getParent() != null;
+        if (want && !attached) {
+            addBubble();
+        } else if (!want && attached) {
+            removeBubble();
+        }
     }
 
     // ---------- 悬浮球 ----------
@@ -897,6 +918,8 @@ public class FloatService extends AccessibilityService {
             @Override
             public void run() {
                 final Translator.Result r = Translator.translate(st, txt, st.incomingLang());
+                HistoryStore.record(FloatService.this, HistoryStore.TYPE_SCREEN,
+                    "当前屏幕", txt, r.text, r.ok);
                 ui.post(new Runnable() {
                     @Override
                     public void run() {
@@ -952,6 +975,8 @@ public class FloatService extends AccessibilityService {
             @Override
             public void run() {
                 final Translator.Result r = Translator.translate(st, draft, st.draftLang());
+                HistoryStore.record(FloatService.this, HistoryStore.TYPE_DRAFT,
+                    "", draft, r.text, r.ok);
                 ui.post(new Runnable() {
                     @Override
                     public void run() {

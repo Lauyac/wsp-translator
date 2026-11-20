@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
     private static final int T_GREEN  = 0xFF059669; private static final int T_GREEN_BG  = 0xFFECFDF5;
     private static final int T_AMBER  = 0xFFB45309; private static final int T_AMBER_BG  = 0xFFFFFBEB;
     private static final int T_CYAN   = 0xFF0E7490; private static final int T_CYAN_BG   = 0xFFECFEFF;
+    private static final int T_ROSE   = 0xFFBE123C; private static final int T_ROSE_BG   = 0xFFFFF1F2;
     private static final int T_SLATE  = 0xFF475569; private static final int T_SLATE_BG  = 0xFFF1F5F9;
     private static final int T_OK_BG  = 0xFFECFDF5;
     private static final int T_ERR_BG = 0xFFFEF2F2;
@@ -80,8 +81,8 @@ public class MainActivity extends Activity {
     /** 历史保存的自定义模型名（非预设时自动追加到列表末尾）。 */
     private String customModel = "";
     private CheckBox cbShowKey;
-    private Switch swNotif, swBubble, swSkipZh;
-    private TextView tvResult;
+    private Switch swNotif, swBubble, swAutoHide, swSkipZh;
+    private TextView tvResult, tvStatToday, tvStatTotal;
     /** 权限条目状态行（tag 上挂对应的「去开启」按钮）。 */
     private TextView tvPermN, tvPermA, tvPermO, tvPermP;
     private LinearLayout updatePanel, updateActions;
@@ -104,6 +105,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshPerm();
+        if (tvStatToday != null && tvStatTotal != null) refreshStats();
     }
 
     // ==================== UI 构建 ====================
@@ -232,13 +234,36 @@ public class MainActivity extends Activity {
             "聊天界面点悬浮球翻译当前屏幕（需无障碍 + 悬浮窗权限）");
         bindSwitch(swBubble, "bubbleEnabled");
         divider(cPref);
+        swAutoHide = switchRow(cPref, "悬浮球仅在聊天应用内显示",
+            "离开 WhatsApp 自动隐藏、进入时恢复，避免悬浮球打扰其他应用");
+        bindSwitch(swAutoHide, "bubbleAutoHide");
+        divider(cPref);
         swSkipZh = switchRow(cPref, "对方已发中文时跳过翻译",
             "避免中文消息被重复翻译，节省流量");
         bindSwitch(swSkipZh, "skipChineseIncoming");
 
-        // ---- ⑤ 应用更新 ----
+        // ---- ⑤ 使用统计（本地聚合，返回页面时刷新）----
+        LinearLayout cStat = card(content, dp(20));
+        sectionTitle(cStat, "使用统计", "5", "按本机翻译记录聚合，仅保存在手机上", "📊", T_CYAN, T_CYAN_BG);
+        tvStatToday = new TextView(this);
+        tvStatToday.setTextColor(C_SUB);
+        tvStatToday.setTextSize(13);
+        cStat.addView(tvStatToday);
+        tvStatTotal = new TextView(this);
+        tvStatTotal.setTextColor(C_SUB);
+        tvStatTotal.setTextSize(13);
+        tvStatTotal.setPadding(0, dp(6), 0, 0);
+        cStat.addView(tvStatTotal);
+        Button btnHistory = outlineBtn("查看翻译历史", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, HistoryActivity.class));
+            }
+        });
+        cStat.addView(withMargin(btnHistory, 0, dp(12), 0, 0));
+
+        // ---- ⑥ 应用更新 ----
         LinearLayout cUp = card(content, dp(20));
-        sectionTitle(cUp, "应用更新", "5", null, "⬆", T_CYAN, T_CYAN_BG);
+        sectionTitle(cUp, "应用更新", "6", null, "⬆", T_ROSE, T_ROSE_BG);
 
         // 当前版本行：左侧名称、右侧徽章，单行对齐
         LinearLayout verRow = row();
@@ -338,7 +363,7 @@ public class MainActivity extends Activity {
 
         // ---- ⑥ 使用说明 ----
         LinearLayout cHelp = card(content, dp(20));
-        sectionTitle(cHelp, "使用说明", "6", "三种翻译方式按需使用；不用悬浮翻译可不开启对应权限", "📖", T_SLATE, T_SLATE_BG);
+        sectionTitle(cHelp, "使用说明", "7", "三种翻译方式按需使用；不用悬浮翻译可不开启对应权限", "📖", T_SLATE, T_SLATE_BG);
         cHelp.addView(helpItem("收信翻译",
             "保持本应用在后台运行；聊天应用收到新消息后，自动发出以「译 ·」开头的通知，同时展示原文与译文。翻译失败时也会发出失败通知并说明原因。", "🔔"));
         cHelp.addView(helpItem("悬浮翻译",
@@ -1067,6 +1092,16 @@ public class MainActivity extends Activity {
         swSkipZh.setChecked(st.skipChineseIncoming());
         swNotif.setChecked(st.notifEnabled());
         swBubble.setChecked(st.bubbleEnabled());
+        swAutoHide.setChecked(st.bubbleAutoHide());
+        refreshStats();
+    }
+
+    /** 从本地翻译记录聚合使用统计（次数/字符/成功率），轻查询直接在主线程执行。 */
+    private void refreshStats() {
+        HistoryStore.Stats s = HistoryStore.stats(this);
+        tvStatToday.setText("今日: " + s.todayCount + " 次翻译 · 约 " + s.todayChars + " 字符");
+        tvStatTotal.setText("累计: " + s.totalCount + " 次翻译 · 约 " + s.totalChars
+            + " 字符 · 成功率 " + s.successRate() + "%");
     }
 
     private String versionName() {
