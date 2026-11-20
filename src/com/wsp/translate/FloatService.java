@@ -122,11 +122,20 @@ public class FloatService extends AccessibilityService {
         return WA.equals(pkg) || WA_BIZ.equals(pkg);
     }
 
+    /** 是否为本应用自己的窗口事件/窗口（翻译面板持有焦点时，活动窗口是自身覆盖窗）。 */
+    private boolean isSelf(String pkg) {
+        return getPackageName().equals(pkg);
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
         CharSequence pkgCs = e == null ? null : e.getPackageName();
         if (pkgCs == null) return;
         String pkg = pkgCs.toString();
+        // 自己悬浮窗（翻译面板持有输入焦点时）产生的窗口事件不参与显隐判断：
+        // 面板打开 → 焦点移到本应用覆盖窗 → 自身 WINDOW_STATE_CHANGED 若按普通应用处理，
+        // 会安排隐藏并在复核时把「自己」当成非聊天前台，导致面板约 1 秒后被自动收起
+        if (isSelf(pkg)) return;
         boolean wa = isWa(pkg);
 
         // 悬浮球智能显隐：WhatsApp 的任意事件立即显示并取消待执行的隐藏；
@@ -167,6 +176,11 @@ public class FloatService extends AccessibilityService {
                 if (isWa(active)) {
                     // 前台仍是 WhatsApp：只是转场/事件乱序，取消隐藏并刷新活动时间
                     lastWaSeenMs = SystemClock.elapsedRealtime();
+                    return;
+                }
+                if (isSelf(active)) {
+                    // 焦点在本应用悬浮面板上：面板打开期间不做隐藏判定，
+                    // 等用户离开（焦点移到真实前台）后的事件再触发隐藏
                     return;
                 }
                 // 前台确认是其他应用（桌面/真实 App）→ 执行隐藏
