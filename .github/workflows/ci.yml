@@ -18,10 +18,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Ensure SDK components
+        run: |
+          SM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -d "$ANDROID_HOME/build-tools/34.0.0" ] || yes | "$SM" "build-tools;34.0.0" >/dev/null
+          [ -d "$ANDROID_HOME/platforms/android-34" ] || yes | "$SM" "platforms;android-34" >/dev/null
+
+      # 注意：ANDROID_HOME 是 Runner 系统环境变量，不能通过 ${{ env.ANDROID_HOME }}
+      # 引用（env 上下文只含工作流显式定义的变量，会展开成空串）；改由 shell 展开。
       - name: Build APK
-        run: bash build.sh
-        env:
-          WSP_SDK: ${{ env.ANDROID_HOME }}
+        run: WSP_SDK="$ANDROID_HOME" bash build.sh
 
       - name: Generate release manifests
         run: bash release.sh
