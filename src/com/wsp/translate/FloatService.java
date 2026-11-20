@@ -127,6 +127,15 @@ public class FloatService extends AccessibilityService {
         return getPackageName().equals(pkg);
     }
 
+    /** 面板版本胶囊展示的版本号；读包信息失败时返回空串（胶囊隐藏）。 */
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
         CharSequence pkgCs = e == null ? null : e.getPackageName();
@@ -466,6 +475,19 @@ public class FloatService extends AccessibilityService {
         title.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
         header.addView(title, new LinearLayout.LayoutParams(0,
             LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        // 版本号胶囊：与语言方向胶囊同款式，动态读取应用真实版本
+        TextView ver = new TextView(this);
+        ver.setText("v" + versionName());
+        ver.setTextColor(C_SUB);
+        ver.setTextSize(10);
+        ver.setTypeface(Typeface.SANS_SERIF, Typeface.NORMAL);
+        ver.setBackground(Ui.fill(this, 0x14FFFFFF, dp(R_PILL), 0));
+        ver.setPadding(dp(8), dp(3), dp(8), dp(3));
+        LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        vlp.rightMargin = dp(6);
+        header.addView(ver, vlp);
+        if (ver.getText().length() <= 1) ver.setVisibility(View.GONE); // 读不到版本号时不显示空胶囊
         TextView close = new TextView(this);
         close.setText("✕");
         close.setTextColor(C_SRC);
