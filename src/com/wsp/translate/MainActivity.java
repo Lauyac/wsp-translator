@@ -66,6 +66,10 @@ public class MainActivity extends Activity {
     /** 模型预设列表（按展示顺序）。 */
     private static final String[] MODEL_PRESETS = {
         "deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4.1-flash"};
+    /** 模型下拉的「自定义」入口项：选中后弹出输入框。 */
+    private static final String ITEM_CUSTOM = "＋ 自定义模型…";
+    /** 历史保存的自定义模型名（非预设时自动追加到列表末尾）。 */
+    private String customModel = "";
     private CheckBox cbShowKey;
     private Switch swNotif, swBubble, swSkipZh;
     private TextView tvResult;
@@ -151,13 +155,18 @@ public class MainActivity extends Activity {
         spModel = modelSpinner();
         spModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                if (spModel.getSelectedItem() != null)
-                    st.put("model", String.valueOf(spModel.getSelectedItem()));
+                if (spModel.getSelectedItem() == null) return;
+                String sel = String.valueOf(spModel.getSelectedItem());
+                if (ITEM_CUSTOM.equals(sel)) {
+                    promptCustomModel();
+                } else if (!sel.isEmpty()) {
+                    st.put("model", sel);
+                }
             }
             @Override public void onNothingSelected(AdapterView<?> p) { }
         });
         cModel.addView(spinnerWrap(spModel));
-        cModel.addView(caption("预设推荐项；历史保存过的自定义模型名会自动保留在列表末尾"));
+        cModel.addView(caption("预设推荐项；选最后一项「＋ 自定义模型…」可输入任意模型名，自定义值会保留在列表末尾"));
 
         // ---- ③ 权限开启（逐项：状态 + 去开启）----
         LinearLayout cPerm = card(content, dp(20));
@@ -640,23 +649,81 @@ public class MainActivity extends Activity {
         return s;
     }
 
-    /** 模型下拉框：预设 4 项；历史保存的自定义模型名自动追加到末尾并选中。 */
+    /** 模型下拉框：预设 4 项 + 自定义入口；历史保存的自定义模型名追加在入口之前。 */
     private Spinner modelSpinner() {
         Spinner s = new Spinner(this);
+        rebuildModelAdapter(s);
+        return s;
+    }
+
+    /** 组装模型选项列表并选中当前保存值。 */
+    private void rebuildModelAdapter(Spinner s) {
         java.util.List<String> items = new java.util.ArrayList<>();
         for (String m : MODEL_PRESETS) items.add(m);
-        int savedIdx = -1;
+        int selIdx = -1;
         String saved = st.model();
-        for (int i = 0; i < items.size(); i++) {
-            if (items.get(i).equals(saved)) { savedIdx = i; break; }
+        if (saved != null) {
+            for (int i = 0; i < items.size(); i++) {
+                if (items.get(i).equals(saved)) { selIdx = i; break; }
+            }
         }
-        if (savedIdx < 0 && saved != null && !saved.trim().isEmpty()) {
-            items.add(saved.trim()); // 自定义模型保留为额外选项
-            savedIdx = items.size() - 1;
+        if (selIdx < 0) {
+            // 非预设：视为历史自定义模型，保留在自定义入口之前
+            customModel = (saved == null || saved.trim().isEmpty()) ? "" : saved.trim();
+            if (!customModel.isEmpty()) {
+                items.add(customModel);
+                selIdx = items.size() - 1;
+            }
+        } else {
+            customModel = "";
         }
+        items.add(ITEM_CUSTOM);
         styleDropdown(s, items.toArray(new String[0]));
-        s.setSelection(savedIdx < 0 ? 1 : savedIdx); // 默认 deepseek-v4-flash
-        return s;
+        s.setSelection(selIdx < 0 ? 1 : selIdx); // 默认 deepseek-v4-flash
+    }
+
+    /** 「自定义模型」输入弹窗：保存后立即生效并刷新列表；取消则恢复原选中项。 */
+    private void promptCustomModel() {
+        final int restoreIdx = spModel.getSelectedItemPosition();
+        final EditText et = new EditText(this);
+        et.setHint("输入模型名，如 deepseek-reasoner");
+        et.setText(customModel);
+        et.setSelection(et.getText().length());
+        android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
+        int hpad = dp(20);
+        wrap.setPadding(hpad, dp(4), hpad, 0);
+        wrap.addView(et, new android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("自定义模型")
+            .setMessage("将使用该模型名发起翻译请求，请确认 API 服务端支持它。")
+            .setView(wrap)
+            .setPositiveButton("使用此模型", new android.content.DialogInterface.OnClickListener() {
+                @Override public void onClick(android.content.DialogInterface d, int w) {
+                    String v = et.getText().toString().trim();
+                    if (v.isEmpty()) {
+                        Toast.makeText(MainActivity.this, "模型名不能为空，已恢复原选项", Toast.LENGTH_SHORT).show();
+                        spModel.setSelection(Math.max(0, restoreIdx));
+                        return;
+                    }
+                    customModel = v;
+                    st.put("model", v);
+                    rebuildModelAdapter(spModel); // 选中项恢复为刚保存的自定义名
+                }
+            })
+            .setNegativeButton("取消", new android.content.DialogInterface.OnClickListener() {
+                @Override public void onClick(android.content.DialogInterface d, int w) {
+                    // 回到取消前的选项（避免停留在「自定义…」入口项上）
+                    spModel.setSelection(Math.max(0, restoreIdx));
+                }
+            })
+            .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+                @Override public void onCancel(android.content.DialogInterface d) {
+                    spModel.setSelection(Math.max(0, restoreIdx));
+                }
+            })
+            .show();
     }
 
     private CheckBox check(String t) {
@@ -861,19 +928,11 @@ public class MainActivity extends Activity {
     }
 
     private GradientDrawable bg(int color, float radius, int stroke) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(color);
-        g.setCornerRadius(radius);
-        if (stroke > 0) g.setStroke(dp(1), stroke);
-        return g;
+        return Ui.fill(this, color, radius, stroke);
     }
 
     private GradientDrawable bgStroke(int color, int strokeColor, float radius) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(color);
-        g.setCornerRadius(radius);
-        g.setStroke(dp(1), strokeColor);
-        return g;
+        return Ui.strokeRect(this, color, strokeColor, radius);
     }
 
     private LinearLayout row() {
@@ -897,7 +956,7 @@ public class MainActivity extends Activity {
     }
 
     private int dp(float v) {
-        return (int) (getResources().getDisplayMetrics().density * v + 0.5f);
+        return Ui.dp(this, v);
     }
 
     // ==================== 业务逻辑（保持不变） ====================
@@ -948,7 +1007,8 @@ public class MainActivity extends Activity {
             .setPositiveButton("知道了", null)
             .show();
 
-        Translator.submit(new Runnable() {
+        // 更新检查走工具池，不与翻译队列互相阻塞
+        Translator.submitUtil(new Runnable() {
             @Override
             public void run() {
                 final Updater.Result r = Updater.fetchNotes(ver);
@@ -978,7 +1038,7 @@ public class MainActivity extends Activity {
         pbUpdate.setVisibility(View.GONE);
         btnCheck.setEnabled(false);
         final MainActivity act = this;
-        Translator.submit(new Runnable() {
+        Translator.submitUtil(new Runnable() {
             @Override
             public void run() {
                 final Updater.Result r = Updater.checkInfo(act);
@@ -1028,7 +1088,7 @@ public class MainActivity extends Activity {
         tvUpdate.setTextColor(C_SUB);
         final MainActivity act = this;
         final Updater.Info info = pendingInfo;
-        Translator.submit(new Runnable() {
+        Translator.submitUtil(new Runnable() {
             @Override
             public void run() {
                 final Updater.Result r = Updater.download(act, info, new Updater.Progress() {
@@ -1128,8 +1188,24 @@ public class MainActivity extends Activity {
     }
 
     private void save() {
-        st.setApiKey(etKey.getText().toString().trim());
+        String key = etKey.getText().toString().trim();
+        if (!st.setApiKey(key)) {
+            // AndroidKeyStore 不可用：拒绝明文落盘
+            tvResult.setVisibility(View.VISIBLE);
+            tvResult.setTextColor(C_ERR);
+            tvResult.setText("✗ API Key 加密失败（本机安全存储不可用），已放弃保存以避免明文存储；请重启手机后再试");
+            Toast.makeText(this, "API Key 加密失败，未保存", Toast.LENGTH_LONG).show();
+            return;
+        }
         String base = etBase.getText().toString().trim();
+        if (base.startsWith("http://")) {
+            // Android 9+ 禁止明文流量，http 地址必然连接失败，直接阻止
+            tvResult.setVisibility(View.VISIBLE);
+            tvResult.setTextColor(C_ERR);
+            tvResult.setText("✗ API 地址不能使用 http:// 明文连接（系统已禁止明文流量），请改用 https:// 地址");
+            Toast.makeText(this, "API 地址不能使用 http://，请改用 https://", Toast.LENGTH_LONG).show();
+            return;
+        }
         st.put("baseUrl", base.isEmpty() ? "https://api.deepseek.com" : base);
         st.put("model", String.valueOf(spModel.getSelectedItem()));
         st.put("draftLang", Langs.ITEMS[spDraft.getSelectedItemPosition()][0]);
@@ -1149,22 +1225,40 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** 测试连接：只用输入框现值发起请求，不写入任何配置（需点「保存设置」才会持久化）。 */
     private void test() {
-        save();
+        final String key = etKey.getText().toString().trim();
+        final String base = etBase.getText().toString().trim();
+        if (key.isEmpty()) {
+            tvResult.setVisibility(View.VISIBLE);
+            tvResult.setTextColor(C_WARN);
+            tvResult.setText("请先填写 API Key 再测试");
+            return;
+        }
+        if (base.startsWith("http://")) {
+            tvResult.setVisibility(View.VISIBLE);
+            tvResult.setTextColor(C_ERR);
+            tvResult.setText("✗ API 地址不能使用 http:// 明文连接（系统已禁止明文流量），请改用 https:// 地址");
+            return;
+        }
+        final String model = String.valueOf(spModel.getSelectedItem());
+        final String target = Langs.ITEMS[spDraft.getSelectedItemPosition()][0];
         final String sample = "你好，请问这款产品的最低起订量是多少？";
         tvResult.setVisibility(View.VISIBLE);
-        tvResult.setText("正在测试连接…");
+        tvResult.setText("正在测试连接…（使用输入框当前值，不会自动保存）");
         final Settings s = new Settings(this);
-        Translator.submit(new Runnable() {
+        Translator.submitUtil(new Runnable() {
             @Override
             public void run() {
-                final Translator.Result r = Translator.translate(s, sample, s.draftLang());
+                final Translator.Result r = Translator.translate(s, sample, target, key, base, model);
                 ui.post(new Runnable() {
                     @Override
                     public void run() {
                         tvResult.setText(r.ok
-                            ? ("连接成功（" + (r.cached ? "缓存命中" : "网络请求") + "）\n示例译文: " + r.text)
-                            : "连接失败: " + r.text);
+                            ? ("✓ 连接成功（" + (r.cached ? "缓存命中" : "网络请求") + "）\n示例译文: " + r.text
+                                + "\n配置未自动保存，如需保留请点「保存设置」")
+                            : "✗ 连接失败: " + r.text);
+                        tvResult.setTextColor(r.ok ? C_OK : C_ERR);
                     }
                 });
             }

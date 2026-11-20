@@ -18,14 +18,22 @@ public class Settings {
         String raw = p.getString("apiKey", "");
         if (raw == null || raw.isEmpty()) return "";
         if (raw.startsWith("v1:")) return Crypto.decrypt(raw);
-        // 旧版明文：回读明文并立即以密文覆写
-        p.edit().putString("apiKey", Crypto.encrypt(raw)).apply();
+        // 旧版明文：立即以密文覆写；加密不可用时保留原值、不破坏可用性
+        String enc = Crypto.encrypt(raw);
+        if (enc != null && !enc.isEmpty()) p.edit().putString("apiKey", enc).apply();
         return raw;
     }
 
-    /** 保存 API Key（加密落盘）。 */
-    public void setApiKey(String v) {
-        p.edit().putString("apiKey", Crypto.encrypt(v == null ? "" : v.trim())).apply();
+    /**
+     * 保存 API Key（加密落盘）。
+     * @return false 表示加密不可用（AndroidKeyStore 异常），为避免明文落盘已拒绝保存。
+     */
+    public boolean setApiKey(String v) {
+        String enc = Crypto.encrypt(v == null ? "" : v.trim());
+        if (enc == null) return false;
+        if (enc.isEmpty()) p.edit().remove("apiKey").apply(); // 空串表示清除
+        else p.edit().putString("apiKey", enc).apply();
+        return true;
     }
     public String baseUrl()     { return p.getString("baseUrl", "https://api.deepseek.com"); }
     public String model()       { return p.getString("model", "deepseek-v4-flash"); }
@@ -35,6 +43,11 @@ public class Settings {
     public boolean bubbleEnabled()  { return p.getBoolean("bubbleEnabled", true); }
     public boolean skipChineseIncoming() { return p.getBoolean("skipChineseIncoming", true); }
 
+    /** 悬浮球吸附后的屏幕位置（像素）；未记录时返回 -1。 */
+    public int bubbleX() { return p.getInt("bubbleX", -1); }
+    public int bubbleY() { return p.getInt("bubbleY", -1); }
+
     public void put(String k, String v)  { p.edit().putString(k, v).apply(); }
     public void put(String k, boolean v) { p.edit().putBoolean(k, v).apply(); }
+    public void put(String k, int v)     { p.edit().putInt(k, v).apply(); }
 }

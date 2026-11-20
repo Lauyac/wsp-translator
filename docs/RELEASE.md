@@ -6,6 +6,7 @@
 2. **versionCode 单调递增**：每次发布必须将 `build.sh` 中 `VERSION_CODE` 严格 +1（如 8 → 9），应用内更新判断仅基于 versionCode。
 3. **版本号命名规则**：第三段 0–9 递增（1.0.1 → 1.0.2 → …），第三段达到 10 进位（1.0.10 → 1.1.0），与 CHANGELOG.md 保持一致。
 4. **SHA-256 强制校验**：应用下载更新包后会与 `update.json` 中的 `sha256` 比对，不一致即删除文件并中止，绝不安装。因此每次 Release **必须附带与 APK 实际哈希一致**的 `update.json`。
+5. **更新清单签名**：`update.json` 的 `sig` 字段为对 `sha256` 字段值的 ECDSA-P256 签名（私钥 `secrets/update-sign.pem`，gitignored，离线保管；公钥内置在 `Updater.java`）。`release.sh` 缺少私钥时会拒绝生成清单——**发布私钥必须长期稳定，丢失后所有后续 Release 的清单都无法被 1.2.2+ 客户端接受**。
 5. **签名密钥不入仓库**：release keystore 由发布人离线保管；密钥更换 = 所有已装用户无法覆盖升级，务必长期稳定。
 6. **Release 描述 = 应用内更新说明**：应用的更新确认界面直接展示 Release 的描述文本（轻量 Markdown 渲染）。发布时必须填写本次更新说明（新增内容 / 功能改动 / 已修复问题），未填将显示「本次发布未附更新说明」。
 7. **更新需用户确认**：应用为两阶段更新——先展示版本信息与更新说明，用户点「下载并安装」后才下载（带进度条），SHA-256 校验通过后自动进入安装。
@@ -50,8 +51,10 @@ git tag v<VERSION> && git push origin main v<VERSION>
 
 1. `GET https://api.github.com/repos/<user>/<repo>/releases/latest`（Accept: application/vnd.github+json）
 2. 从 assets 中取 `update.json` 与 `.apk` 的 `browser_download_url`；缺少任一即中止并提示
-3. 读 `update.json`：`versionName / versionCode / apk / sha256`；`apk` 字段与实际资产名不一致即中止
-4. `versionCode <= 当前` → 提示"已是最新版本"；`versionCode > 当前` → 下载
+3. 读 `update.json`：`versionName / versionCode / apk / sha256 / sig`；`apk` 字段与实际资产名不一致即中止
+4. `versionCode <= 当前` → 提示"已是最新版本"；`versionCode > 当前` → 验证清单签名后下载
+   - `sig`（ECDSA-P256 over sha256 字段值）存在即严格验签，失败中止并提示"来源可疑"
+   - 无 `sig` 为 v1.2.1 及更早的旧清单，仅靠 SHA-256 + TLS 兼容放行（CI 用 `WSP_SKIP_SIG=1` 生成的未签名清单**绝不可发布**）
 5. 下载时流式计算 SHA-256（上限 100MB），与清单比对：
    - 通过 → 经 `UpdateFileProvider`（content:// + 临时读权限）调起系统安装器（需"安装未知应用"权限）
    - 失败 → **删除文件、提示错误、不进入安装流程**

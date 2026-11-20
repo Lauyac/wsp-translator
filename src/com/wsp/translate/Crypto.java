@@ -47,7 +47,7 @@ public final class Crypto {
         }
     }
 
-    /** 加密。空串直接返回空串（表示未设置）；失败返回原明文（保证功能可用性优先）。 */
+    /** 加密。空串直接返回空串（表示未设置）；失败返回 null（调用方必须拒绝明文落盘）。 */
     public static String encrypt(String plain) {
         if (plain == null || plain.isEmpty()) return "";
         try {
@@ -59,7 +59,7 @@ public final class Crypto {
                 + Base64.encodeToString(iv, Base64.NO_WRAP)
                 + ":" + Base64.encodeToString(ct, Base64.NO_WRAP);
         } catch (Exception e) {
-            return plain;
+            return null;
         }
     }
 

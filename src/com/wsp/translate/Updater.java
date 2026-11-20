@@ -27,6 +27,15 @@ public final class Updater {
 
     public static final String UPDATE_REPO = "Lauyac/wsp-translator";
 
+    /**
+     * 更新清单签名公钥（EC P-256，X.509 SPKI DER，Base64）。
+     * 私钥 secrets/update-sign.pem 离线保管（gitignored）；release.sh 用它对 update.json 的
+     * sha256 字段值做 ECDSA-SHA256 签名写入 "sig"。GitHub 账号被盗也无法伪造更新包——
+     * 没有私钥就签不出可验证的 sig。TLS 只是传输保护，签名才是信任锚。
+     */
+    private static final String UPDATE_PUBKEY_B64 =
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3VmN9D9TfZzIoBebaUuUeKdM8d3f61GZeftrye5tJLFd+mM4/l9tNjWYm65JcJ4ys05tCjAV8sUhzN3GbzfrMw==";
+
     /** 单个更新包大小上限：100MB，防止异常资产撑爆存储。 */
     private static final long MAX_APK_BYTES = 100L * 1024 * 1024;
 
@@ -38,9 +47,10 @@ public final class Updater {
         public final String apkName;
         public final String apkUrl;
         public final String sha256;
-        Info(String v, int c, String n, String a, String u, String s) {
+        public final String sig;        // 清单签名（ECDSA-SHA256 of sha256 值），旧清单可能为空
+        Info(String v, int c, String n, String a, String u, String s, String g) {
             versionName = v; versionCode = c; notes = n;
-            apkName = a; apkUrl = u; sha256 = s;
+            apkName = a; apkUrl = u; sha256 = s; sig = g;
         }
     }
 
@@ -116,10 +126,17 @@ public final class Updater {
                 return Result.ok("已是最新版本（versionCode " + cur + "）", null, null);
             }
 
-            // 4. 更新说明：取 Release 描述（发布时由 release 流程写入）
+            // 4. 清单签名验证：sig 覆盖 sha256 字段值，防止账号被盗后推送伪造更新包。
+            //    带签名即严格验证；无签名为旧版清单（v1.2.1 及更早），仅靠 SHA-256 + TLS 兼容放行。
+            String sig = m.optString("sig", "").trim();
+            if (!sig.isEmpty() && !verifySig(sha, sig)) {
+                return Result.fail("更新清单签名验证失败，来源可疑，已中止更新");
+            }
+
+            // 5. 更新说明：取 Release 描述（发布时由 release 流程写入）
             String notes = j.optString("body", "").trim();
             if (notes.isEmpty()) notes = "（本次发布未附更新说明）";
-            return Result.ok("发现新版本", new Info(newName, newCode, notes, wantApk, apkUrl, sha), null);
+            return Result.ok("发现新版本", new Info(newName, newCode, notes, wantApk, apkUrl, sha, sig), null);
         } catch (HttpCodeException e) {
             if (e.code == 404) {
                 return Result.fail("暂无可用发布版本（仓库尚未发布任何 Release）");
@@ -171,6 +188,10 @@ public final class Updater {
             return Result.fail("更新信息无效，请重新检查更新");
         }
         try {
+            // 纵深防御：下载前再验一次清单签名（checkInfo 已验过）
+            if (info.sig != null && !info.sig.isEmpty() && !verifySig(info.sha256, info.sig)) {
+                return Result.fail("更新清单签名验证失败，来源可疑，已中止更新");
+            }
             File dir = new File(ctx.getFilesDir(), "update");
             if (!dir.exists()) dir.mkdirs();
             final File f = new File(dir, info.apkName);
@@ -193,6 +214,21 @@ public final class Updater {
     }
 
     // ==================== 网络与工具 ====================
+
+    /** 用内置公钥验证清单签名（ECDSA-SHA256 over sha256 字段值的 ASCII 字节）。 */
+    private static boolean verifySig(String sha256, String sigB64) {
+        try {
+            byte[] spki = android.util.Base64.decode(UPDATE_PUBKEY_B64, android.util.Base64.NO_WRAP);
+            java.security.PublicKey pk = java.security.KeyFactory.getInstance("EC")
+                .generatePublic(new java.security.spec.X509EncodedKeySpec(spki));
+            java.security.Signature sg = java.security.Signature.getInstance("SHA256withECDSA");
+            sg.initVerify(pk);
+            sg.update(sha256.getBytes(StandardCharsets.UTF_8));
+            return sg.verify(android.util.Base64.decode(sigB64, android.util.Base64.DEFAULT));
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     private static String httpGet(String url, String accept) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();

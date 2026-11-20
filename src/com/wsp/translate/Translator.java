@@ -29,7 +29,10 @@ public class Translator {
         }
     }
 
+    /** 翻译专用池：单线程保序、控并发（LLM 请求耗时可达 60 秒级）。 */
     private static final ExecutorService POOL = Executors.newSingleThreadExecutor();
+    /** 工具池：更新检查/下载、版本说明查询等 UI 触发的轻量网络任务，不与翻译排队互抢。 */
+    private static final ExecutorService UTIL = Executors.newFixedThreadPool(2);
 
     /** 内存 LRU 缓存，上限 500 条（对应扩展 cacheByContent 的本地行为）。 */
     private static final Map<String, String> CACHE = new LinkedHashMap<String, String>(64, 0.75f, true) {
@@ -39,7 +42,11 @@ public class Translator {
         }
     };
 
+    /** 提交翻译任务（保序、串行）。 */
     public static void submit(Runnable r) { POOL.execute(r); }
+
+    /** 提交工具类任务（更新检查/下载、说明查询），不占用翻译队列。 */
+    public static void submitUtil(Runnable r) { UTIL.execute(r); }
 
     public static String prompt(String target) {
         return "你是一位专业的外贸翻译助手。把用户发来的内容翻译成" + target
@@ -63,19 +70,43 @@ public class Translator {
     }
 
     public static Result translate(Settings s, String text, String target) {
-        String key = hash(text + "|" + target + "|" + s.baseUrl() + "|" + s.model());
+        return translate(s, text, target, null, null, null);
+    }
+
+    /**
+     * 带临时覆盖参数的翻译（供“测试连接”使用输入框现值、不落盘）：
+     * key/base/model 传 null 或空串时回落到 Settings 中已保存的值。
+     */
+    public static Result translate(Settings s, String text, String target,
+                                   String keyOverride, String baseOverride, String modelOverride) {
+        String key = hash(text + "|" + target + "|" + baseUrl(s, baseOverride)
+            + "|" + model(s, modelOverride));
         synchronized (CACHE) {
             String hit = CACHE.get(key);
             if (hit != null) return new Result(true, hit, true);
         }
         try {
-            String out = request(s, text, target);
+            String out = request(s, text, target, keyOverride, baseOverride, modelOverride);
             if (out == null || out.trim().isEmpty()) return new Result(false, "API 返回了空结果，请重试", false);
             synchronized (CACHE) { CACHE.put(key, out); }
             return new Result(true, out, false);
         } catch (Exception e) {
             return new Result(false, friendlyError(e), false);
         }
+    }
+
+    private static String model(Settings s, String override) {
+        return (override == null || override.trim().isEmpty()) ? s.model().trim() : override.trim();
+    }
+
+    private static String baseUrl(Settings s) {
+        return baseUrl(s, null);
+    }
+
+    private static String baseUrl(Settings s, String override) {
+        String b = (override == null || override.trim().isEmpty()) ? s.baseUrl().trim() : override.trim();
+        if (b.endsWith("/")) b = b.substring(0, b.length() - 1);
+        return b;
     }
 
     /** 错误分类：把底层异常转成用户可操作的中文提示。 */
@@ -87,6 +118,9 @@ public class Translator {
             return "网络连接失败，请检查手机网络或 API 地址是否正确";
         }
         String m = e.getMessage() == null ? "" : e.getMessage();
+        if (m.contains("Cleartext HTTP traffic")) {
+            return "API 地址使用了 http:// 明文连接，Android 已禁止明文流量；请在应用设置改为 https:// 地址";
+        }
         if (m.contains("HTTP 401") || m.contains("HTTP 403")) {
             return "API Key 无效或无权限，请到应用设置检查 API Key";
         }
@@ -105,24 +139,26 @@ public class Translator {
         return "翻译失败: " + (m.isEmpty() ? "未知错误" : brief(m));
     }
 
-    private static String baseUrl(Settings s) {
-        String b = s.baseUrl().trim();
-        if (b.endsWith("/")) b = b.substring(0, b.length() - 1);
-        return b;
+    public static String request(Settings s, String text, String target) throws Exception {
+        return request(s, text, target, null, null, null);
     }
 
-    public static String request(Settings s, String text, String target) throws Exception {
+    private static String request(Settings s, String text, String target,
+                                  String keyOverride, String baseOverride, String modelOverride)
+            throws Exception {
         HttpURLConnection c = (HttpURLConnection)
-            new URL(baseUrl(s) + "/chat/completions").openConnection();
+            new URL(baseUrl(s, baseOverride) + "/chat/completions").openConnection();
         c.setRequestMethod("POST");
         c.setConnectTimeout(15000);
         c.setReadTimeout(60000);
         c.setDoOutput(true);
-        c.setRequestProperty("Authorization", "Bearer " + s.apiKey().trim());
+        String apiKey = (keyOverride == null || keyOverride.trim().isEmpty())
+            ? s.apiKey().trim() : keyOverride.trim();
+        c.setRequestProperty("Authorization", "Bearer " + apiKey);
         c.setRequestProperty("Content-Type", "application/json");
 
         JSONObject body = new JSONObject();
-        body.put("model", s.model().trim());
+        body.put("model", model(s, modelOverride));
         body.put("stream", false);
         JSONArray msgs = new JSONArray();
         msgs.put(msg("system", prompt(target)));

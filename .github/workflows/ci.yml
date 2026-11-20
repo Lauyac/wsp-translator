@@ -25,6 +25,8 @@ jobs:
 
       - name: Generate release manifests
         run: bash release.sh
+        env:
+          WSP_SKIP_SIG: '1'  # CI 仅验证构建与清单一致性，不持有签名私钥，产物不对外发布
 
       - name: Verify SHA-256 manifest matches APK
         run: |

@@ -129,8 +129,18 @@ public class FloatService extends AccessibilityService {
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.START;
-        lp.x = dp(8);
-        lp.y = dp(280);
+        // 恢复上次吸附的位置；无记录或屏幕变化时回落到默认位置
+        Settings ps = new Settings(this);
+        int px = ps.bubbleX(), py = ps.bubbleY();
+        int w = getResources().getDisplayMetrics().widthPixels;
+        int h = getResources().getDisplayMetrics().heightPixels;
+        if (px >= 0 && py >= 0 && px + dp(42) <= w && py + dp(42) <= h) {
+            lp.x = px;
+            lp.y = py;
+        } else {
+            lp.x = dp(8);
+            lp.y = dp(280);
+        }
 
         final float[] down = new float[2];
         tv.setOnTouchListener(new View.OnTouchListener() {
@@ -164,7 +174,7 @@ public class FloatService extends AccessibilityService {
         try { wm.addView(tv, lp); bubble = tv; } catch (Exception ignored) { }
     }
 
-    /** 拖动结束后把悬浮球吸附到最近的屏幕左/右边缘，并限制纵向范围在屏幕内。 */
+    /** 拖动结束后把悬浮球吸附到最近的屏幕左/右边缘，并限制纵向范围在屏幕内；位置持久化。 */
     private void snapBubble(View v, WindowManager.LayoutParams lp) {
         int size = dp(42);
         int margin = dp(8);
@@ -176,6 +186,10 @@ public class FloatService extends AccessibilityService {
         if (lp.y < 0) lp.y = 0;
         if (lp.y > h - size) lp.y = Math.max(0, h - size);
         try { wm.updateViewLayout(v, lp); } catch (Exception ignored) { }
+        // 记住吸附位置，服务重启/开机后悬浮球回到用户放的位置
+        Settings ps = new Settings(this);
+        ps.put("bubbleX", lp.x);
+        ps.put("bubbleY", lp.y);
     }
 
     private void togglePanel() {
@@ -529,13 +543,7 @@ public class FloatService extends AccessibilityService {
         }
     }
 
-    /** 语音、图片、贴纸等媒体条目的无障碍描述前缀——这些内容没有文字，不需要翻译。 */
-    private static final String[] MEDIA_PREFIX = {
-        "语音消息", "语音", "图片", "照片", "视频", "贴纸", "表情符号", "动图", "GIF", "gif",
-        "文件", "文档", "位置", "位置信息", "音频", "联系人名片", "已删除的消息",
-        "Voice message", "Photo", "Video", "Sticker", "Emoji", "GIF", "Document",
-        "Location", "Audio", "Contact card", "This message was deleted"
-    };
+    /** 语音、图片、贴纸等媒体条目的判定逻辑已共享至 TextFilter（读屏与通知两条链路口径一致）。 */
 
     /**
      * 读取屏幕文字并清洗：
@@ -544,96 +552,116 @@ public class FloatService extends AccessibilityService {
      * 3) 过滤界面噪声（按钮文案、时间戳、未读徽标、纯表情、已读标记等）；
      * 4) 跳过语音/图片/贴纸等无文字媒体条目及按钮无障碍说明，不送入翻译；
      * 5) 全局去重 + 相邻去重，压缩重复行。
+     * 6) 预算截断时保留屏幕底部（最新）消息、丢弃最旧内容；
+     *    整体防异常：节点失效/未密封时返回空结果，不崩溃。
      */
     private ScreenScan scanScreen() {
-        AccessibilityNodeInfo root = lastWaRoot;
-        if (root == null) root = getRootInActiveWindow();
-        if (root == null) return new ScreenScan("", 0);
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null || root.getPackageName() == null
+                || !isWa(root.getPackageName().toString())) {
+                root = lastWaRoot; // 兜底：最近一次捕获的 WhatsApp 窗口（可能陈旧，整体 try/catch 保护）
+            }
+            if (root == null) return new ScreenScan("", 0);
 
-        List<TextItem> items = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        Deque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
-        queue.add(root);
-        int nodes = 0;
-        int skipped = 0;
-        Rect r = new Rect();
-        while (!queue.isEmpty() && nodes < 600 && items.size() < 80) {
-            AccessibilityNodeInfo n = queue.poll();
-            if (n == null) continue;
-            nodes++;
-            CharSequence t = n.getText();
-            CharSequence d = n.getContentDescription();
-            boolean fromText = t != null && t.length() > 0;
-            CharSequence cs = fromText ? t : d;
-            if (n.getChildCount() > 0) {
-                for (int i = 0; i < n.getChildCount(); i++) {
-                    AccessibilityNodeInfo c = n.getChild(i);
-                    if (c != null) queue.add(c);
+            List<TextItem> items = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            Deque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+            queue.add(root);
+            int nodes = 0;
+            int skipped = 0;
+            Rect r = new Rect();
+            while (!queue.isEmpty() && nodes < 600) {
+                AccessibilityNodeInfo n = queue.poll();
+                if (n == null) continue;
+                nodes++;
+                CharSequence t = n.getText();
+                CharSequence d = n.getContentDescription();
+                boolean fromText = t != null && t.length() > 0;
+                CharSequence cs = fromText ? t : d;
+                if (n.getChildCount() > 0) {
+                    for (int i = 0; i < n.getChildCount(); i++) {
+                        AccessibilityNodeInfo c = n.getChild(i);
+                        if (c != null) queue.add(c);
+                    }
                 }
-            }
-            String s = cleanText(cs);
-            if (s.isEmpty()) continue;
+                String s = cleanText(cs);
+                if (s.isEmpty()) continue;
 
-            if (!fromText) {
-                // 按钮/输入框/图片的无障碍说明不是聊天内容；过长的说明文字同样丢弃
-                if (n.isClickable() || n.isEditable() || s.length() > 30) { skipped++; continue; }
-                // 语音、图片、贴纸等媒体条目：无文字可译，跳过且不混入原文
-                if (isMediaEntry(s)) { skipped++; continue; }
-            } else if (n.isEditable()) {
-                // 输入框里的草稿走「草稿翻译」通道，不并入屏幕原文
-                skipped++;
-                continue;
-            } else if (isMediaOnly(s)) {
-                // 文本节点形式的媒体条目（如"语音消息 0:07"）：无文字可译，跳过
-                skipped++;
-                continue;
-            }
-            if (isA11yHint(s)) { skipped++; continue; }
-            // WhatsApp 系统提示条（如"此聊天源自 Meta 广告…"）：非聊天内容，不进入翻译区
-            if (isSystemNotice(s)) continue;
-            if (isNoise(s) || seen.contains(s)) continue;
+                if (!fromText) {
+                    // 按钮/输入框/图片的无障碍说明不是聊天内容；过长的说明文字同样丢弃
+                    if (n.isClickable() || n.isEditable() || s.length() > 30) { skipped++; continue; }
+                    // 语音、图片、贴纸等媒体条目：无文字可译，跳过且不混入原文
+                    if (isMediaEntry(s)) { skipped++; continue; }
+                } else if (n.isEditable()) {
+                    // 输入框里的草稿走「草稿翻译」通道，不并入屏幕原文
+                    skipped++;
+                    continue;
+                } else if (isMediaOnly(s)) {
+                    // 文本节点形式的媒体条目（如"语音消息 0:07"）：无文字可译，跳过
+                    skipped++;
+                    continue;
+                }
+                if (isA11yHint(s)) { skipped++; continue; }
+                // WhatsApp 系统提示条（如"此聊天源自 Meta 广告…"）：非聊天内容，不进入翻译区
+                if (isSystemNotice(s)) continue;
+                if (isNoise(s) || seen.contains(s)) continue;
 
-            n.getBoundsInScreen(r);
-            if (r.width() <= 0 || r.height() <= 0) continue;
-            seen.add(s);
-            items.add(new TextItem(s, r.top, r.left));
+                try {
+                    n.getBoundsInScreen(r); // 窗口切换瞬间节点可能未密封
+                } catch (Exception ge) {
+                    continue;
+                }
+                if (r.width() <= 0 || r.height() <= 0) continue;
+                seen.add(s);
+                items.add(new TextItem(s, r.top, r.left));
+            }
+
+            // 按屏幕位置排序：自上而下、自左而右（与用户看到的顺序一致）
+            Collections.sort(items, new Comparator<TextItem>() {
+                @Override public int compare(TextItem a, TextItem b) {
+                    if (a.top != b.top) return a.top - b.top;
+                    return a.left - b.left;
+                }
+            });
+
+            // 条目数上限同样从末尾起算：超过 80 条时保留最新的 80 条
+            if (items.size() > 80) {
+                items = items.subList(items.size() - 80, items.size());
+            }
+
+            // 字符预算截断从末尾（屏幕底部=最新消息）向前装：超限丢弃的是最旧内容
+            java.util.LinkedList<String> kept = new java.util.LinkedList<>();
+            int budget = 3500;
+            for (int i = items.size() - 1; i >= 0; i--) {
+                TextItem it = items.get(i);
+                String s = it.text;
+                if (!kept.isEmpty() && kept.getFirst().equals(s)) continue; // 相邻去重
+                if (budget < s.length()) break; // 更旧的内容放不下，直接停止
+                kept.addFirst(s);
+                budget -= s.length() + 1; // +1 换行
+            }
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < kept.size(); i++) {
+                if (i > 0) sb.append('\n');
+                sb.append(kept.get(i));
+            }
+            return new ScreenScan(sb.toString(), skipped);
+        } catch (Exception e) {
+            // 陈旧节点（窗口切换/未密封）等异常：返回空结果，由调用方给出引导提示
+            return new ScreenScan("", 0);
         }
-
-        // 按屏幕位置排序：自上而下、自左而右（与用户看到的顺序一致）
-        Collections.sort(items, new Comparator<TextItem>() {
-            @Override public int compare(TextItem a, TextItem b) {
-                if (a.top != b.top) return a.top - b.top;
-                return a.left - b.left;
-            }
-        });
-
-        StringBuilder sb = new StringBuilder();
-        String prev = null;
-        for (TextItem it : items) {
-            if (it.text.equals(prev)) continue;
-            prev = it.text;
-            if (sb.length() + it.text.length() > 3500) break;
-            if (sb.length() > 0) sb.append('\n');
-            sb.append(it.text);
-        }
-        return new ScreenScan(sb.toString(), skipped);
     }
 
     /** 语音消息、图片、贴纸等媒体条目判定（无文字内容，无需翻译）。 */
     private boolean isMediaEntry(String s) {
-        for (String p : MEDIA_PREFIX) {
-            if (s.startsWith(p)) return true;
-        }
-        return false;
+        return TextFilter.isMediaEntry(s);
     }
 
     /** 文本节点形式的媒体条目：去掉时长/标点后仅剩媒体词（如"语音消息 0:07"），才判定为媒体。 */
     private boolean isMediaOnly(String s) {
-        String t = s.replaceAll("[\\s:：0-9.,，。·]+", "");
-        for (String p : MEDIA_PREFIX) {
-            if (t.equals(p)) return true;
-        }
-        return false;
+        return TextFilter.isMediaOnly(s);
     }
 
     /** 按钮的无障碍操作说明（"双击并按住可录制…松开以发送"之类），不是聊天内容。 */
@@ -860,8 +888,17 @@ public class FloatService extends AccessibilityService {
         if (target == null) return false;
 
         try {
+            // 保留输入框已有内容：非空且与译文不同时拼接填入，不覆盖用户已打的字
+            String finalText = text;
+            try {
+                CharSequence cur = target.getText();
+                if (cur != null && cur.length() > 0) {
+                    String c = cur.toString().trim();
+                    if (!c.isEmpty() && !c.equals(text.trim())) finalText = c + "\n" + text;
+                }
+            } catch (Exception ignored) { }
             Bundle args = new Bundle();
-            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, finalText);
             return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
         } catch (Exception e) {
             return false;
@@ -884,6 +921,6 @@ public class FloatService extends AccessibilityService {
     }
 
     private int dp(int v) {
-        return (int) (getResources().getDisplayMetrics().density * v + 0.5f);
+        return Ui.dp(this, v);
     }
 }
