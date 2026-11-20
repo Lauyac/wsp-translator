@@ -1126,13 +1126,18 @@ public class FloatService extends AccessibilityService {
         if (target == null) return false;
 
         try {
-            // 保留输入框已有内容：非空且与译文不同时拼接填入，不覆盖用户已打的字
+            // 保留输入框已有内容：非空且与译文不同时拼接填入，不覆盖用户已打的字。
+            // 注意：WhatsApp 等应用输入框为空时，无障碍 getText() 会返回占位提示
+            //（中文界面为「消息」），必须识别为空框，否则每次填入都会多出这两个字。
             String finalText = text;
             try {
                 CharSequence cur = target.getText();
                 if (cur != null && cur.length() > 0) {
                     String c = cur.toString().trim();
-                    if (!c.isEmpty() && !c.equals(text.trim())) finalText = c + "\n" + text;
+                    boolean placeholder = isInputPlaceholder(target, c);
+                    if (!c.isEmpty() && !placeholder && !c.equals(text.trim())) {
+                        finalText = c + "\n" + text;
+                    }
                 }
             } catch (Exception ignored) { }
             Bundle args = new Bundle();
@@ -1141,6 +1146,24 @@ public class FloatService extends AccessibilityService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** WhatsApp 输入框的常见占位提示；部分版本空框的无障碍文本即提示词。 */
+    private static final String[] INPUT_PLACEHOLDERS = {
+        "消息", "键入消息", "输入消息", "输入一条消息",
+        "Message", "Type a message", "Type messages"
+    };
+
+    /** 当前文本是否为该输入框的占位提示（与 hint 相等，或命中常见占位词）。 */
+    private static boolean isInputPlaceholder(AccessibilityNodeInfo target, String cur) {
+        try {
+            CharSequence hint = target.getHintText();
+            if (hint != null && cur.equals(hint.toString().trim())) return true;
+        } catch (Exception ignored) { }
+        for (String p : INPUT_PLACEHOLDERS) {
+            if (cur.equals(p)) return true;
+        }
+        return false;
     }
 
     private AccessibilityNodeInfo findFirstEditable(AccessibilityNodeInfo node, int depth) {
