@@ -7,6 +7,9 @@ import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -114,7 +117,8 @@ public class FloatService extends AccessibilityService {
         TextView tv = new TextView(this);
         tv.setText("译");
         tv.setTextColor(Color.WHITE);
-        tv.setTextSize(20);
+        tv.setTextSize(14);
+        tv.setIncludeFontPadding(false);
         tv.setGravity(Gravity.CENTER);
         tv.setBackgroundResource(R.drawable.bubble_bg);
 
@@ -195,8 +199,8 @@ public class FloatService extends AccessibilityService {
     }
 
     private WindowManager.LayoutParams panelLp() {
-        int w = Math.min(dp(320),
-            (int) (getResources().getDisplayMetrics().widthPixels * 0.9f));
+        int w = Math.min(dp(340),
+            (int) (getResources().getDisplayMetrics().widthPixels * 0.92f));
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
             w, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -217,35 +221,44 @@ public class FloatService extends AccessibilityService {
     // ---------- 悬浮面板 ----------
 
     private void buildPanel() {
+        GradientDrawable pbg = new GradientDrawable();
+        pbg.setColor(0xF01E2A34);
+        pbg.setCornerRadius(dp(18));
         panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(12), dp(10), dp(12), dp(12));
-        panel.setBackgroundColor(0xEE1F2B33);
+        panel.setBackground(pbg);
+        panel.setElevation(dp(8));
+        panel.setPadding(dp(14), dp(12), dp(14), dp(14));
 
-        // 标题栏
+        // 标题栏：应用名 + 关闭
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = new TextView(this);
         title.setText("翻译助手");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(16);
+        title.setTextSize(15);
         title.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
-        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0,
-            LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        header.addView(title, tl);
-        Button close = smallBtn("×");
+        header.addView(title, new LinearLayout.LayoutParams(0,
+            LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView close = new TextView(this);
+        close.setText("✕");
+        close.setTextColor(C_SRC);
+        close.setTextSize(15);
+        close.setPadding(dp(12), dp(6), dp(4), dp(6));
+        close.setClickable(true);
         close.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { togglePanel(); }
         });
         header.addView(close);
         panel.addView(header);
 
-        // 语言方向
+        // 语言方向：让用户确认目标语言是否符合预期
         tvLang = new TextView(this);
         tvLang.setTextColor(C_SUB);
         tvLang.setTextSize(11);
         tvLang.setTypeface(Typeface.SANS_SERIF, Typeface.NORMAL);
-        panel.addView(tvLang, colLp(dp(4)));
+        panel.addView(tvLang, colLp(dp(3)));
 
         // 处理状态行（灰=进行中/未开始，绿=成功，红=失败，黄=警告）
         tvStatus = new TextView(this);
@@ -269,8 +282,9 @@ public class FloatService extends AccessibilityService {
         panel.addView(outer, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        // 原文卡
-        content.addView(smallLabel("原文（屏幕识别）", C_SRC), colLp(dp(8)));
+        // ---- 区域一：收信翻译（屏幕识别 → 译文）----
+        content.addView(sectionLabel("收信翻译", "自动读取当前聊天文字并翻译", C_OK), colLp(dp(8)));
+        content.addView(smallLabel("原文（屏幕识别）", C_SRC), colLp(dp(6)));
         tvSource = makeTextCard(12, C_SRC, false);
         ScrollView svSrc = new ScrollView(this);
         svSrc.addView(tvSource);
@@ -278,7 +292,6 @@ public class FloatService extends AccessibilityService {
             LinearLayout.LayoutParams.MATCH_PARENT, dp(72));
         content.addView(svSrc, srcL);
 
-        // 译文卡
         content.addView(smallLabel("译文", C_OK), colLp(dp(8)));
         tvResult = makeTextCard(14, Color.WHITE, true);
         ScrollView svOut = new ScrollView(this);
@@ -287,21 +300,23 @@ public class FloatService extends AccessibilityService {
             LinearLayout.LayoutParams.MATCH_PARENT, dp(150));
         content.addView(svOut, outL);
 
-        // 操作区
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
-        btnRead = smallBtn("读取屏幕并翻译");
+        btnRead = panelBtn("翻译当前屏幕", true);
         btnRead.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { readAndTranslate(); }
         });
-        btnCopy = smallBtn("复制译文");
+        btnCopy = panelBtn("复制译文", false);
         btnCopy.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { copyResult(); }
         });
         row1.addView(btnRead, rowLp());
         row1.addView(btnCopy, rowLp());
-        content.addView(row1, colLp(dp(6)));
+        content.addView(row1, colLp(dp(10)));
 
+        // ---- 区域二：回复草稿（中文 → 对方语言 → 填入输入框）----
+        content.addView(sectionLabel("回复草稿",
+            "中文译成对方语言后写入聊天输入框，不会自动发送，请核对后手动发送", 0xFF5B9BF6), colLp(dp(14)));
         etDraft = new EditText(this);
         etDraft.setHint("输入中文草稿…");
         etDraft.setTextColor(Color.WHITE);
@@ -309,33 +324,32 @@ public class FloatService extends AccessibilityService {
         etDraft.setTextSize(14);
         etDraft.setMinLines(2);
         etDraft.setGravity(Gravity.TOP);
+        GradientDrawable dbg = new GradientDrawable();
+        dbg.setColor(0x14FFFFFF);
+        dbg.setCornerRadius(dp(10));
+        dbg.setStroke(dp(1), 0x3DFFFFFF);
+        etDraft.setBackground(dbg);
+        etDraft.setPadding(dp(10), dp(8), dp(10), dp(8));
         LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(80));
-        dl.topMargin = dp(8);
-        content.addView(etDraft, dl);
+        content.addView(etDraft, colLp(dp(6)));
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
-        btnDraft = smallBtn("翻译并填入");
+        btnDraft = panelBtn("翻译并填入", true);
         btnDraft.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { translateDraft(); }
         });
-        btnFill = smallBtn("填入译文");
+        btnFill = panelBtn("填入上方译文", false);
         btnFill.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { fillFromResult(); }
         });
         row2.addView(btnDraft, rowLp());
         row2.addView(btnFill, rowLp());
-        content.addView(row2);
-
-        TextView hint = new TextView(this);
-        hint.setText("「翻译并填入」将译文写入 WhatsApp 输入框，请核对后手动发送；「填入译文」直接填入上方译文卡内容。");
-        hint.setTextColor(C_SUB);
-        hint.setTextSize(11);
-        content.addView(hint, colLp(dp(6)));
+        content.addView(row2, colLp(dp(8)));
     }
 
-    /** 统一样式的文本卡：同字体族、固定字号、统一行距与左对齐，浅色底衬托层级。 */
+    /** 统一样式的文本卡：圆角浅色底、同字体族、固定字号、统一行距与左对齐。 */
     private TextView makeTextCard(float sizeSp, int color, boolean selectable) {
         TextView v = new TextView(this);
         v.setTextColor(color);
@@ -344,8 +358,11 @@ public class FloatService extends AccessibilityService {
         v.setGravity(Gravity.START);
         v.setLineSpacing(dp(2), 1.1f);
         v.setIncludeFontPadding(true);
-        v.setBackgroundColor(0x14FFFFFF);
-        v.setPadding(dp(8), dp(6), dp(8), dp(6));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0x14FFFFFF);
+        bg.setCornerRadius(dp(8));
+        v.setBackground(bg);
+        v.setPadding(dp(10), dp(8), dp(10), dp(8));
         if (selectable) v.setTextIsSelectable(true);
         return v;
     }
@@ -391,11 +408,78 @@ public class FloatService extends AccessibilityService {
         return lp;
     }
 
-    private Button smallBtn(String text) {
+    /** 区域标题：彩色圆点 + 标题 + 一行说明，用于划分面板的两个功能区。 */
+    private View sectionLabel(String title, String desc, int dotColor) {
+        LinearLayout v = new LinearLayout(this);
+        v.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        View dot = new View(this);
+        GradientDrawable dg = new GradientDrawable();
+        dg.setColor(dotColor);
+        dg.setCornerRadius(dp(2));
+        row.addView(dot, new LinearLayout.LayoutParams(dp(4), dp(4)));
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextColor(Color.WHITE);
+        t.setTextSize(12);
+        t.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
+        t.setPadding(dp(6), 0, 0, 0);
+        row.addView(t);
+        v.addView(row);
+        TextView d = new TextView(this);
+        d.setText(desc);
+        d.setTextColor(C_SUB);
+        d.setTextSize(10);
+        d.setPadding(dp(10), dp(2), 0, 0);
+        v.addView(d);
+        return v;
+    }
+
+    /** 面板按钮：主按钮（蓝底白字）/ 次按钮（描边浅底），统一按下与禁用态。 */
+    private Button panelBtn(String text, boolean primary) {
         Button b = new Button(this);
         b.setText(text);
         b.setTextSize(13);
         b.setAllCaps(false);
+        b.setStateListAnimator(null);
+        b.setPadding(0, dp(11), 0, dp(11));
+
+        GradientDrawable def = new GradientDrawable();
+        def.setCornerRadius(dp(12));
+        GradientDrawable pr = new GradientDrawable();
+        pr.setCornerRadius(dp(12));
+        GradientDrawable dis = new GradientDrawable();
+        dis.setCornerRadius(dp(12));
+        int textColor, textDisabled;
+        if (primary) {
+            def.setColor(0xFF2563EB);
+            pr.setColor(0xFF1D4ED8);
+            dis.setColor(0xFF2A3947);
+            textColor = Color.WHITE;
+            textDisabled = 0x55FFFFFF;
+        } else {
+            def.setColor(0x1AFFFFFF);
+            def.setStroke(dp(1), 0x3DFFFFFF);
+            pr.setColor(0x2EFFFFFF);
+            pr.setStroke(dp(1), 0x3DFFFFFF);
+            dis.setColor(0x14FFFFFF);
+            dis.setStroke(dp(1), 0x22FFFFFF);
+            textColor = 0xFFE6EDF3;
+            textDisabled = 0x44FFFFFF;
+        }
+        b.setTextColor(new android.content.res.ColorStateList(
+            new int[][]{{-android.R.attr.state_enabled}, {}},
+            new int[]{textDisabled, textColor}));
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{-android.R.attr.state_enabled}, dis);
+        s.addState(new int[]{android.R.attr.state_pressed}, pr);
+        s.addState(new int[]{}, def);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setCornerRadius(dp(12));
+        mask.setColor(0xFFFFFFFF);
+        b.setBackground(new RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x33FFFFFF), s, mask));
         return b;
     }
 
@@ -634,7 +718,7 @@ public class FloatService extends AccessibilityService {
                 : "未读取到聊天文字", C_ERR);
             tvResult.setText(scan.skipped > 0
                 ? "当前屏幕只有语音/图片/表情等非文本内容，无需翻译。\n可上滑查看含文字的消息后再试。"
-                : "请先打开 WhatsApp 的聊天界面，再点「读取屏幕并翻译」重试。\n提示: 上下滑动聊天窗口后重试，可读取更多消息。");
+                : "请先打开 WhatsApp 的聊天界面，再点「翻译当前屏幕」重试。\n提示: 上下滑动聊天窗口后重试，可读取更多消息。");
             tvSource.setText("");
             return;
         }
@@ -667,7 +751,7 @@ public class FloatService extends AccessibilityService {
                                 + skipSuffix(scan.skipped), C_OK);
                         } else {
                             lastResultOk = false;
-                            tvResult.setText(r.text + "\n\n可点「读取屏幕并翻译」重试。");
+                            tvResult.setText(r.text + "\n\n可点「翻译当前屏幕」重试。");
                             setStatus("翻译失败", C_ERR);
                             toast(r.text);
                         }
