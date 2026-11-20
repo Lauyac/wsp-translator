@@ -542,21 +542,101 @@ public class MainActivity extends Activity {
         return e;
     }
 
+    /** 下拉框容器：右侧下拉箭头；交互态绘制在 Spinner 自身背景上（保证按压态生效）。 */
     private View spinnerWrap(Spinner s) {
         LinearLayout w = new LinearLayout(this);
-        w.setBackground(bgStroke(C_CARD, C_INPUT_STROKE, dp(R_COMP)));
-        w.setPadding(dp(6), 0, dp(6), 0);
-        w.addView(s, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(46)));
+        w.setGravity(Gravity.CENTER_VERTICAL);
+        w.setPadding(dp(8), 0, dp(12), 0);
+        s.setBackground(spinnerBg());
+        s.setPadding(dp(12), 0, dp(6), 0);
+        s.setElevation(dp(1));
+        w.addView(s, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        TextView arrow = new TextView(this);
+        arrow.setText("▾");
+        arrow.setTextColor(C_HINT);
+        arrow.setTextSize(12);
+        arrow.setGravity(Gravity.CENTER);
+        arrow.setClickable(false);
+        w.addView(arrow, new LinearLayout.LayoutParams(
+            dp(16), ViewGroup.LayoutParams.MATCH_PARENT));
         return w;
+    }
+
+    /** 下拉框背景：默认描边 → 按下浅蓝底 → 聚焦主色描边加粗。 */
+    private StateListDrawable spinnerBg() {
+        GradientDrawable def = bgStroke(C_CARD, C_INPUT_STROKE, dp(R_COMP));
+        GradientDrawable prs = bgStroke(C_PRIMARY_LIGHT, C_PRIMARY, dp(R_COMP));
+        GradientDrawable foc = bgStroke(C_CARD, C_PRIMARY, dp(R_COMP));
+        foc.setStroke(dp(2), C_PRIMARY);
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{android.R.attr.state_pressed}, prs);
+        s.addState(new int[]{android.R.attr.state_focused}, foc);
+        s.addState(new int[]{}, def);
+        return s;
+    }
+
+    /** 下拉弹层底：圆角白底卡片 + 轻描边。 */
+    private GradientDrawable popupBg() {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(C_CARD);
+        g.setCornerRadius(dp(12));
+        g.setStroke(dp(1), C_STROKE);
+        return g;
+    }
+
+    /** 统一下拉弹层样式：条目带按压波纹，选中项主色加粗并打勾；闭合态为深色中字重。
+     *  仅改样式，选项数据与选中逻辑不变。 */
+    private void styleDropdown(final Spinner s, String[] items) {
+        s.setPopupBackgroundDrawable(popupBg());
+        s.setAdapter(new ArrayAdapter<String>(this, 0, items) {
+            @Override public View getView(int pos, View cv, ViewGroup parent) {
+                TextView v = (TextView) cv;
+                if (v == null) {
+                    v = new TextView(MainActivity.this);
+                    v.setTextColor(C_TEXT);
+                    v.setTextSize(14);
+                    v.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                    v.setGravity(Gravity.CENTER_VERTICAL);
+                    v.setSingleLine(true);
+                    v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    v.setPadding(dp(12), 0, dp(4), 0);
+                }
+                v.setText(getItem(pos));
+                return v;
+            }
+            @Override public View getDropDownView(int pos, View cv, ViewGroup parent) {
+                TextView v = (TextView) cv;
+                if (v == null) {
+                    v = new TextView(MainActivity.this);
+                    v.setTextSize(14);
+                    v.setGravity(Gravity.CENTER_VERTICAL);
+                    v.setSingleLine(true);
+                    v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    v.setPadding(dp(14), dp(11), dp(14), dp(11));
+                }
+                boolean sel = pos == s.getSelectedItemPosition();
+                GradientDrawable g = new GradientDrawable();
+                g.setCornerRadius(dp(10));
+                g.setColor(sel ? C_PRIMARY_LIGHT : 0x00000000);
+                GradientDrawable mask = new GradientDrawable();
+                mask.setCornerRadius(dp(10));
+                mask.setColor(0xFFFFFFFF);
+                v.setBackground(new RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x142563EB), g, mask));
+                v.setTextColor(sel ? C_PRIMARY : C_TEXT);
+                v.setTypeface(Typeface.create("sans-serif",
+                    sel ? Typeface.BOLD : Typeface.NORMAL));
+                v.setText((sel ? "✓  " : "      ") + getItem(pos));
+                return v;
+            }
+        });
     }
 
     private Spinner spinner() {
         Spinner s = new Spinner(this);
         String[] labels = new String[Langs.ITEMS.length];
         for (int i = 0; i < Langs.ITEMS.length; i++) labels[i] = Langs.ITEMS[i][1];
-        s.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
-        s.setBackground(null);
+        styleDropdown(s, labels);
         return s;
     }
 
@@ -574,11 +654,8 @@ public class MainActivity extends Activity {
             items.add(saved.trim()); // 自定义模型保留为额外选项
             savedIdx = items.size() - 1;
         }
-        s.setAdapter(new ArrayAdapter<>(this,
-            android.R.layout.simple_spinner_dropdown_item,
-            items.toArray(new String[0])));
+        styleDropdown(s, items.toArray(new String[0]));
         s.setSelection(savedIdx < 0 ? 1 : savedIdx); // 默认 deepseek-v4-flash
-        s.setBackground(null);
         return s;
     }
 
