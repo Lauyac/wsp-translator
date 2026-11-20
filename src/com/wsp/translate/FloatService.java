@@ -117,13 +117,13 @@ public class FloatService extends AccessibilityService {
         TextView tv = new TextView(this);
         tv.setText("译");
         tv.setTextColor(Color.WHITE);
-        tv.setTextSize(14);
+        tv.setTextSize(12);
         tv.setIncludeFontPadding(false);
         tv.setGravity(Gravity.CENTER);
         tv.setBackgroundResource(R.drawable.bubble_bg);
 
         final WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
-            dp(48), dp(48),
+            dp(42), dp(42),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
@@ -142,14 +142,14 @@ public class FloatService extends AccessibilityService {
                         down[1] = ev.getRawY();
                         return true;
                     case MotionEvent.ACTION_MOVE:
-                        lp.x = (int) (ev.getRawX() - dp(24));
-                        lp.y = (int) (ev.getRawY() - dp(24));
+                        lp.x = (int) (ev.getRawX() - dp(21));
+                        lp.y = (int) (ev.getRawY() - dp(21));
                         try { wm.updateViewLayout(v, lp); } catch (Exception ignored) { }
                         return true;
                     case MotionEvent.ACTION_UP:
                         float dx = ev.getRawX() - down[0];
                         float dy = ev.getRawY() - down[1];
-                        if (dx * dx + dy * dy < dp(12) * dp(12)) {
+                        if (dx * dx + dy * dy < dp(10) * dp(10)) {
                             togglePanel();
                         } else {
                             snapBubble(v, lp);
@@ -166,7 +166,7 @@ public class FloatService extends AccessibilityService {
 
     /** 拖动结束后把悬浮球吸附到最近的屏幕左/右边缘，并限制纵向范围在屏幕内。 */
     private void snapBubble(View v, WindowManager.LayoutParams lp) {
-        int size = dp(48);
+        int size = dp(42);
         int margin = dp(8);
         int w = getResources().getDisplayMetrics().widthPixels;
         int h = getResources().getDisplayMetrics().heightPixels;
@@ -228,7 +228,7 @@ public class FloatService extends AccessibilityService {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setBackground(pbg);
         panel.setElevation(dp(8));
-        panel.setPadding(dp(14), dp(12), dp(14), dp(14));
+        panel.setPadding(dp(12), dp(10), dp(12), dp(12));
 
         // 标题栏：应用名 + 关闭
         LinearLayout header = new LinearLayout(this);
@@ -258,14 +258,14 @@ public class FloatService extends AccessibilityService {
         tvLang.setTextColor(C_SUB);
         tvLang.setTextSize(11);
         tvLang.setTypeface(Typeface.SANS_SERIF, Typeface.NORMAL);
-        panel.addView(tvLang, colLp(dp(3)));
+        panel.addView(tvLang, colLp(dp(2)));
 
         // 处理状态行（灰=进行中/未开始，绿=成功，红=失败，黄=警告）
         tvStatus = new TextView(this);
         tvStatus.setTextColor(C_SUB);
         tvStatus.setTextSize(12);
         tvStatus.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
-        panel.addView(tvStatus, colLp(dp(6)));
+        panel.addView(tvStatus, colLp(dp(4)));
 
         // 可滚动内容区（整体限高，适配小屏/横屏）
         ScrollView outer = new ScrollView(this) {
@@ -283,16 +283,16 @@ public class FloatService extends AccessibilityService {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         // ---- 区域一：收信翻译（屏幕识别 → 译文）----
-        content.addView(sectionLabel("收信翻译", "自动读取当前聊天文字并翻译", C_OK), colLp(dp(8)));
-        content.addView(smallLabel("原文（屏幕识别）", C_SRC), colLp(dp(6)));
+        content.addView(sectionLabel("收信翻译", "自动读取当前聊天文字并翻译", C_OK), colLp(dp(6)));
+        content.addView(smallLabel("原文（屏幕识别）", C_SRC), colLp(dp(4)));
         tvSource = makeTextCard(12, C_SRC, false);
         ScrollView svSrc = new ScrollView(this);
         svSrc.addView(tvSource);
         LinearLayout.LayoutParams srcL = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(72));
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(64));
         content.addView(svSrc, srcL);
 
-        content.addView(smallLabel("译文", C_OK), colLp(dp(8)));
+        content.addView(smallLabel("译文", C_OK), colLp(dp(6)));
         tvResult = makeTextCard(14, Color.WHITE, true);
         ScrollView svOut = new ScrollView(this);
         svOut.addView(tvResult);
@@ -312,11 +312,11 @@ public class FloatService extends AccessibilityService {
         });
         row1.addView(btnRead, rowLp());
         row1.addView(btnCopy, rowLp());
-        content.addView(row1, colLp(dp(10)));
+        content.addView(row1, colLp(dp(8)));
 
         // ---- 区域二：回复草稿（中文 → 对方语言 → 填入输入框）----
         content.addView(sectionLabel("回复草稿",
-            "中文译成对方语言后写入聊天输入框，不会自动发送，请核对后手动发送", 0xFF5B9BF6), colLp(dp(14)));
+            "中文译成对方语言后写入聊天输入框，不会自动发送，请核对后手动发送", 0xFF5B9BF6), colLp(dp(10)));
         etDraft = new EditText(this);
         etDraft.setHint("输入中文草稿…");
         etDraft.setTextColor(Color.WHITE);
@@ -331,8 +331,8 @@ public class FloatService extends AccessibilityService {
         etDraft.setBackground(dbg);
         etDraft.setPadding(dp(10), dp(8), dp(10), dp(8));
         LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(80));
-        content.addView(etDraft, colLp(dp(6)));
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(72));
+        content.addView(etDraft, colLp(dp(4)));
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
@@ -346,7 +346,7 @@ public class FloatService extends AccessibilityService {
         });
         row2.addView(btnDraft, rowLp());
         row2.addView(btnFill, rowLp());
-        content.addView(row2, colLp(dp(8)));
+        content.addView(row2, colLp(dp(6)));
     }
 
     /** 统一样式的文本卡：圆角浅色底、同字体族、固定字号、统一行距与左对齐。 */
@@ -362,7 +362,7 @@ public class FloatService extends AccessibilityService {
         bg.setColor(0x14FFFFFF);
         bg.setCornerRadius(dp(8));
         v.setBackground(bg);
-        v.setPadding(dp(10), dp(8), dp(10), dp(8));
+        v.setPadding(dp(9), dp(7), dp(9), dp(7));
         if (selectable) v.setTextIsSelectable(true);
         return v;
     }
@@ -443,7 +443,7 @@ public class FloatService extends AccessibilityService {
         b.setTextSize(13);
         b.setAllCaps(false);
         b.setStateListAnimator(null);
-        b.setPadding(0, dp(11), 0, dp(11));
+        b.setPadding(0, dp(9), 0, dp(9));
 
         GradientDrawable def = new GradientDrawable();
         def.setCornerRadius(dp(12));
