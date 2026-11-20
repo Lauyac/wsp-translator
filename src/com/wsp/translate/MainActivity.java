@@ -63,6 +63,7 @@ public class MainActivity extends Activity {
     private static final int T_AMBER  = 0xFFB45309; private static final int T_AMBER_BG  = 0xFFFFFBEB;
     private static final int T_CYAN   = 0xFF0E7490; private static final int T_CYAN_BG   = 0xFFECFEFF;
     private static final int T_ROSE   = 0xFFBE123C; private static final int T_ROSE_BG   = 0xFFFFF1F2;
+    private static final int T_INDIGO = 0xFF4F46E5; private static final int T_INDIGO_BG = 0xFFEEF2FF;
     private static final int T_SLATE  = 0xFF475569; private static final int T_SLATE_BG  = 0xFFF1F5F9;
     private static final int T_OK_BG  = 0xFFECFDF5;
     private static final int T_ERR_BG = 0xFFFEF2F2;
@@ -90,6 +91,9 @@ public class MainActivity extends Activity {
     private ProgressBar pbUpdate;
     private Button btnCheck, btnDownload, btnCancel;
     private Updater.Info pendingInfo;
+    /** 备份导出/恢复的系统文件选择器请求码。 */
+    private static final int REQ_EXPORT_BACKUP = 101;
+    private static final int REQ_IMPORT_BACKUP = 102;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -254,12 +258,22 @@ public class MainActivity extends Activity {
         tvStatTotal.setTextSize(13);
         tvStatTotal.setPadding(0, dp(6), 0, 0);
         cStat.addView(tvStatTotal);
-        Button btnHistory = outlineBtn("查看翻译历史", new View.OnClickListener() {
+        LinearLayout statBtns = row();
+        Button btnHistory = outlineBtn("翻译历史", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 startActivity(new Intent(MainActivity.this, HistoryActivity.class));
             }
         });
-        cStat.addView(withMargin(btnHistory, 0, dp(12), 0, 0));
+        statBtns.addView(btnHistory, half());
+        View statGap = new View(this);
+        statBtns.addView(statGap, new LinearLayout.LayoutParams(dp(10), 1));
+        Button btnGlossary = outlineBtn("术语速查", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, GlossaryActivity.class));
+            }
+        });
+        statBtns.addView(btnGlossary, half());
+        cStat.addView(withMargin(statBtns, 0, dp(12), 0, 0));
 
         // ---- ⑥ 应用更新 ----
         LinearLayout cUp = card(content, dp(20));
@@ -361,9 +375,26 @@ public class MainActivity extends Activity {
         cUp.addView(updateActions);
         updateActions.setVisibility(View.GONE);
 
-        // ---- ⑥ 使用说明 ----
+        // ---- ⑦ 备份与恢复（JSON 文件，不含 API Key）----
+        LinearLayout cBackup = card(content, dp(20));
+        sectionTitle(cBackup, "备份与恢复", "7",
+            "换机或重装时导出/恢复应用设置；API Key 属敏感信息不包含在备份内，恢复后需单独填写", "💾", T_INDIGO, T_INDIGO_BG);
+        LinearLayout backupBtns = row();
+        Button btnExport = outlineBtn("导出设置", new View.OnClickListener() {
+            @Override public void onClick(View v) { exportBackup(); }
+        });
+        backupBtns.addView(btnExport, half());
+        View backupGap = new View(this);
+        backupBtns.addView(backupGap, new LinearLayout.LayoutParams(dp(10), 1));
+        Button btnImport = outlineBtn("恢复设置", new View.OnClickListener() {
+            @Override public void onClick(View v) { importBackup(); }
+        });
+        backupBtns.addView(btnImport, half());
+        cBackup.addView(backupBtns);
+
+        // ---- ⑧ 使用说明 ----
         LinearLayout cHelp = card(content, dp(20));
-        sectionTitle(cHelp, "使用说明", "7", "三种翻译方式按需使用；不用悬浮翻译可不开启对应权限", "📖", T_SLATE, T_SLATE_BG);
+        sectionTitle(cHelp, "使用说明", "8", "三种翻译方式按需使用；不用悬浮翻译可不开启对应权限", "📖", T_SLATE, T_SLATE_BG);
         cHelp.addView(helpItem("收信翻译",
             "保持本应用在后台运行；聊天应用收到新消息后，自动发出以「译 ·」开头的通知，同时展示原文与译文。翻译失败时也会发出失败通知并说明原因。", "🔔"));
         cHelp.addView(helpItem("悬浮翻译",
@@ -1396,6 +1427,117 @@ public class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    // ==================== 备份与恢复 ====================
+
+    private static final String BACKUP_TYPE = "wsp-backup";
+
+    /** 系统文件选择器：创建 JSON 导出文件。 */
+    private void exportBackup() {
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("application/json");
+        i.putExtra(Intent.EXTRA_TITLE, "wsp-backup-" + versionName() + ".json");
+        try {
+            startActivityForResult(i, REQ_EXPORT_BACKUP);
+        } catch (Exception e) {
+            Toast.makeText(this, "无法打开系统文件选择器: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** 系统文件选择器：选择此前导出的 JSON 文件。 */
+    private void importBackup() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        try {
+            startActivityForResult(i, REQ_IMPORT_BACKUP);
+        } catch (Exception e) {
+            Toast.makeText(this, "无法打开系统文件选择器: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        if (requestCode == REQ_EXPORT_BACKUP) {
+            writeBackup(uri);
+        } else if (requestCode == REQ_IMPORT_BACKUP) {
+            readBackup(uri);
+        }
+    }
+
+    /** 导出设置（白名单键，API Key 不写入）；成功后给出结果提示。 */
+    private void writeBackup(Uri uri) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("type", BACKUP_TYPE);
+            o.put("version", 1);
+            o.put("appVersion", versionName());
+            o.put("baseUrl", st.baseUrl());
+            o.put("model", st.model());
+            o.put("draftLang", st.draftLang());
+            o.put("incomingLang", st.incomingLang());
+            o.put("notifEnabled", st.notifEnabled());
+            o.put("bubbleEnabled", st.bubbleEnabled());
+            o.put("bubbleAutoHide", st.bubbleAutoHide());
+            o.put("skipChineseIncoming", st.skipChineseIncoming());
+            java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+            if (os == null) throw new IllegalStateException("目标文件不可写");
+            os.write(o.toString(2).getBytes("UTF-8"));
+            os.close();
+            tvResult.setVisibility(View.VISIBLE);
+            tvResult.setTextColor(C_OK);
+            tvResult.setText("✓ 设置已导出（不含 API Key）");
+            Toast.makeText(this, "设置已导出", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            tvResult.setVisibility(View.VISIBLE);
+            tvResult.setTextColor(C_ERR);
+            tvResult.setText("✗ 导出失败: " + e.getMessage());
+            Toast.makeText(this, "导出失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** 读取备份 JSON 并应用（仅接受白名单键，非法结构整体拒绝）。 */
+    private void readBackup(Uri uri) {
+        try {
+            java.io.InputStream is = getContentResolver().openInputStream(uri);
+            if (is == null) throw new IllegalStateException("文件不可读");
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[4096];
+            int n;
+            while ((n = is.read(b)) > 0) buf.write(b, 0, n);
+            is.close();
+            org.json.JSONObject o = new org.json.JSONObject(buf.toString("UTF-8"));
+            if (!BACKUP_TYPE.equals(o.optString("type"))) {
+                throw new IllegalArgumentException("不是本应用导出的设置备份文件");
+            }
+            if (o.has("baseUrl") && !o.optString("baseUrl").trim().isEmpty()) {
+                st.put("baseUrl", o.optString("baseUrl"));
+            }
+            if (o.has("model") && !o.optString("model").trim().isEmpty()) {
+                st.put("model", o.optString("model"));
+            }
+            if (o.has("draftLang")) st.put("draftLang", o.optString("draftLang"));
+            if (o.has("incomingLang")) st.put("incomingLang", o.optString("incomingLang"));
+            if (o.has("notifEnabled")) st.put("notifEnabled", o.optBoolean("notifEnabled", true));
+            if (o.has("bubbleEnabled")) st.put("bubbleEnabled", o.optBoolean("bubbleEnabled", true));
+            if (o.has("bubbleAutoHide")) st.put("bubbleAutoHide", o.optBoolean("bubbleAutoHide", true));
+            if (o.has("skipChineseIncoming")) st.put("skipChineseIncoming", o.optBoolean("skipChineseIncoming", true));
+            load(); // 立即回填界面，开关回调会同步服务实时生效
+            tvResult.setVisibility(View.VISIBLE);
+            tvResult.setTextColor(C_OK);
+            tvResult.setText("✓ 设置已恢复（API Key 需单独填写）");
+            Toast.makeText(this, "设置已恢复", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            tvResult.setVisibility(View.VISIBLE);
+            tvResult.setTextColor(C_ERR);
+            tvResult.setText("✗ 恢复失败: " + e.getMessage());
+            Toast.makeText(this, "恢复失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void refreshPerm() {

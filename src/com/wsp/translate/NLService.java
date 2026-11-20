@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
@@ -51,6 +52,14 @@ public class NLService extends NotificationListenerService {
         super.onCreate();
         CrashHandler.install(this);
         nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        ensureChannel(this);
+    }
+
+    /** 创建译文通知渠道（服务与快捷操作接收器共用，幂等）。 */
+    static void ensureChannel(Context ctx) {
+        NotificationManager nm =
+            (NotificationManager) ctx.getSystemService(NOTIFICATION_SERVICE);
+        if (nm == null) return;
         NotificationChannel ch = new NotificationChannel(CH_ID, CH_NAME,
             NotificationManager.IMPORTANCE_DEFAULT);
         ch.setDescription("WhatsApp 收到外语消息后的译文通知");
@@ -166,19 +175,40 @@ public class NLService extends NotificationListenerService {
     }
 
     private void postTranslation(String title, String body, String out, String pkg) {
+        postTranslation(this, title, body, out, pkg);
+    }
+
+    private void postFailure(String title, String body, String reason) {
+        postFailure(this, title, body, reason);
+    }
+
+    /** 译文通知：点击跳回聊天；快捷操作「复制译文」直接进剪贴板。 */
+    static void postTranslation(Context ctx, String title, String body, String out, String pkg) {
+        ensureChannel(ctx);
+        NotificationManager nm =
+            (NotificationManager) ctx.getSystemService(NOTIFICATION_SERVICE);
         PendingIntent pi = null;
-        Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
+        Intent launch = ctx.getPackageManager().getLaunchIntentForPackage(pkg);
         if (launch != null) {
-            pi = PendingIntent.getActivity(this, 0, launch,
+            pi = PendingIntent.getActivity(ctx, 0, launch,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         }
-        Notification b = new Notification.Builder(this, CH_ID)
+        Intent copy = new Intent(ctx, NotificationActionReceiver.class)
+            .setAction(NotificationActionReceiver.ACTION_COPY)
+            .putExtra(NotificationActionReceiver.EXTRA_OUT, out);
+        PendingIntent pCopy = PendingIntent.getBroadcast(ctx,
+            ("copy|" + title + "|" + body).hashCode(), copy,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification b = new Notification.Builder(ctx, CH_ID)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("译 · " + title)
             .setStyle(new Notification.BigTextStyle()
                 .bigText("原文: " + body + "\n\n译文: " + out))
             .setAutoCancel(true)
             .setContentIntent(pi)
+            .addAction(new Notification.Action.Builder(
+                R.drawable.ic_stat, "复制译文", pCopy).build())
             .build();
         try {
             // 通知 ID 拼入联系人：不同联系人的相同内容不会互相覆盖
@@ -186,15 +216,29 @@ public class NLService extends NotificationListenerService {
         } catch (Exception ignored) { }
     }
 
-    /** 翻译失败也发通知说明原因，避免"没收到译文"时用户无从排查。 */
-    private void postFailure(String title, String body, String reason) {
-        Notification b = new Notification.Builder(this, CH_ID)
+    /** 翻译失败通知：说明原因并附「重试翻译」快捷操作（手动触发，不自动循环）。 */
+    static void postFailure(Context ctx, String title, String body, String reason) {
+        ensureChannel(ctx);
+        NotificationManager nm =
+            (NotificationManager) ctx.getSystemService(NOTIFICATION_SERVICE);
+        Intent retry = new Intent(ctx, NotificationActionReceiver.class)
+            .setAction(NotificationActionReceiver.ACTION_RETRY)
+            .putExtra(NotificationActionReceiver.EXTRA_TITLE, title)
+            .putExtra(NotificationActionReceiver.EXTRA_BODY, body)
+            .putExtra(NotificationActionReceiver.EXTRA_PKG, ctx.getPackageName());
+        PendingIntent pRetry = PendingIntent.getBroadcast(ctx,
+            ("retry|" + title + "|" + body).hashCode(), retry,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification b = new Notification.Builder(ctx, CH_ID)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("译 · 翻译失败（" + title + "）")
             .setStyle(new Notification.BigTextStyle()
                 .bigText("原文: " + body + "\n\n失败原因: " + reason
-                    + "\n\n请按提示检查网络或应用设置后重试。"))
+                    + "\n\n请按提示检查网络或应用设置，也可点下方「重试翻译」。"))
             .setAutoCancel(true)
+            .addAction(new Notification.Action.Builder(
+                R.drawable.ic_stat, "重试翻译", pRetry).build())
             .build();
         try {
             nm.notify(("fail|" + title + "|" + Translator.hash(body)).hashCode(), b);

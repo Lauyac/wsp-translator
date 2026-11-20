@@ -28,6 +28,15 @@
             android:exported="false"
             android:label="翻译历史" />
 
+        <activity
+            android:name=".GlossaryActivity"
+            android:exported="false"
+            android:label="外贸术语速查" />
+
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false" />
+
         <provider
             android:name=".UpdateFileProvider"
             android:authorities="com.wsp.translate.update"

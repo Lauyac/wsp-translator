@@ -16,6 +16,7 @@ import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -123,28 +124,51 @@ public class FloatService extends AccessibilityService {
         CharSequence pkgCs = e == null ? null : e.getPackageName();
         if (pkgCs == null) return;
         String pkg = pkgCs.toString();
-        // 前台窗口切换：按需显示/隐藏悬浮球（智能显隐）
-        if (e.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            updateBubbleVisibility(pkg);
+        boolean wa = isWa(pkg);
+
+        // 悬浮球智能显隐：WhatsApp 的任意窗口事件立即显示并取消待执行的隐藏；
+        // 只有「真实应用」（可启动的应用，如桌面/其他 App）的窗口切换才安排延迟隐藏。
+        // 系统弹层（状态栏下拉/输入法等，无启动意图）不参与判断，避免误隐藏后无法恢复。
+        Settings st = new Settings(this);
+        if (st.bubbleEnabled() && st.bubbleAutoHide()) {
+            if (wa) {
+                lastWaSeenMs = SystemClock.elapsedRealtime();
+                ui.removeCallbacks(pendingHide);
+                if (bubble == null || bubble.getParent() == null) addBubble();
+            } else if (e.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                && isRealApp(pkg)) {
+                ui.removeCallbacks(pendingHide);
+                ui.postDelayed(pendingHide, HIDE_DELAY_MS);
+            }
         }
-        if (!isWa(pkg)) return;
+
+        if (!wa) return;
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null || root.getPackageName() == null) return;
         if (isWa(root.getPackageName().toString())) lastWaRoot = root;
     }
 
-    /**
-     * 悬浮球智能显隐：开启「仅聊天应用内显示」时，离开 WhatsApp 自动隐藏（连带收起面板），
-     * 回到聊天应用自动恢复；关闭该选项时保持全局常驻。悬浮球总开关关闭则始终隐藏。
-     */
-    private void updateBubbleVisibility(String fg) {
-        Settings st = new Settings(this);
-        boolean want = st.bubbleEnabled() && (!st.bubbleAutoHide() || isWa(fg));
-        boolean attached = bubble != null && bubble.getParent() != null;
-        if (want && !attached) {
-            addBubble();
-        } else if (!want && attached) {
-            removeBubble();
+    /** 延迟隐藏：到点后复核——若刚见过 WhatsApp 活动（防抖窗口内）则不隐藏。 */
+    private final Runnable pendingHide = new Runnable() {
+        @Override public void run() {
+            Settings s = new Settings(FloatService.this);
+            if (!s.bubbleEnabled() || !s.bubbleAutoHide()) return;
+            if (SystemClock.elapsedRealtime() - lastWaSeenMs < HIDE_GUARD_MS) return;
+            boolean attached = bubble != null && bubble.getParent() != null;
+            if (attached) removeBubble();
+        }
+    };
+
+    private static final long HIDE_DELAY_MS = 500;   // 非聊天应用窗口切换后的延迟隐藏
+    private static final long HIDE_GUARD_MS = 1500;  // 距最近 WhatsApp 活动的防抖窗口
+    private long lastWaSeenMs = 0L;
+
+    /** 是否为可启动的真实应用（有桌面入口）；systemui、输入法等系统组件返回 false。 */
+    private boolean isRealApp(String pkg) {
+        try {
+            return pkg != null && getPackageManager().getLaunchIntentForPackage(pkg) != null;
+        } catch (Exception e) {
+            return false;
         }
     }
 
