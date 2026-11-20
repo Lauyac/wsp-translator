@@ -60,6 +60,9 @@ public class FloatService extends AccessibilityService {
     /** 悬浮球直径（dp）。拖拽偏移、位置恢复、吸附边界均以此推导，避免硬编码不同步。 */
     private static final int BUBBLE_DP = 36;
 
+    /** 胶囊圆角（dp）。 */
+    private static final int R_PILL = 999;
+
     // WhatsApp 界面固定文案（精确匹配即丢弃，避免按钮/菜单文字混入译文）
     private static final Set<String> UI_CHROME = new HashSet<>(Arrays.asList(
         "输入消息", "键入消息", "输入一条消息", "消息", "WhatsApp", "WhatsApp Web",
@@ -326,31 +329,48 @@ public class FloatService extends AccessibilityService {
     // ---------- 悬浮面板 ----------
 
     private void buildPanel() {
-        GradientDrawable pbg = new GradientDrawable();
-        pbg.setColor(0xF01E2A34);
-        pbg.setCornerRadius(dp(18));
+        // 深色渐变底 + 微描边，增强悬浮卡片的层次与质感
+        GradientDrawable pbg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{0xFF20303F, 0xFF141F2B});
+        pbg.setCornerRadius(dp(20));
+        pbg.setStroke(dp(1), 0x26FFFFFF);
         panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setBackground(pbg);
-        panel.setElevation(dp(8));
-        panel.setPadding(dp(12), dp(10), dp(12), dp(12));
+        panel.setElevation(dp(10));
+        panel.setPadding(dp(14), dp(12), dp(14), dp(14));
 
-        // 标题栏：应用名 + 关闭
+        // 标题栏：图标位 + 应用名 + 关闭按钮
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView badge = new TextView(this);
+        badge.setText("译");
+        badge.setTextColor(Color.WHITE);
+        badge.setTextSize(14);
+        badge.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
+        badge.setGravity(Gravity.CENTER);
+        GradientDrawable bbg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{0xFF60A5FA, 0xFF2563EB});
+        bbg.setCornerRadius(dp(10));
+        badge.setBackground(bbg);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(30), dp(30));
+        blp.rightMargin = dp(10);
+        header.addView(badge, blp);
         TextView title = new TextView(this);
         title.setText("翻译助手");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(15);
+        title.setTextSize(16);
         title.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
         header.addView(title, new LinearLayout.LayoutParams(0,
             LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         TextView close = new TextView(this);
         close.setText("✕");
         close.setTextColor(C_SRC);
-        close.setTextSize(15);
-        close.setPadding(dp(12), dp(6), dp(4), dp(6));
+        close.setTextSize(13);
+        close.setGravity(Gravity.CENTER);
+        close.setBackground(Ui.fill(this, 0x1AFFFFFF, dp(R_PILL), 0));
+        close.setPadding(dp(10), dp(6), dp(10), dp(6));
         close.setClickable(true);
         close.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { togglePanel(); }
@@ -358,12 +378,17 @@ public class FloatService extends AccessibilityService {
         header.addView(close);
         panel.addView(header);
 
-        // 语言方向：让用户确认目标语言是否符合预期
+        // 语言方向：胶囊样式，让用户确认目标语言是否符合预期
         tvLang = new TextView(this);
-        tvLang.setTextColor(C_SUB);
+        tvLang.setTextColor(C_SRC);
         tvLang.setTextSize(11);
         tvLang.setTypeface(Typeface.SANS_SERIF, Typeface.NORMAL);
-        panel.addView(tvLang, colLp(dp(2)));
+        tvLang.setBackground(Ui.fill(this, 0x14FFFFFF, dp(R_PILL), 0));
+        tvLang.setPadding(dp(10), dp(4), dp(10), dp(4));
+        LinearLayout.LayoutParams langLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        langLp.topMargin = dp(10);
+        panel.addView(tvLang, langLp);
 
         // 处理状态行（灰=进行中/未开始，绿=成功，红=失败，黄=警告）
         tvStatus = new TextView(this);
@@ -429,11 +454,19 @@ public class FloatService extends AccessibilityService {
         etDraft.setTextSize(14);
         etDraft.setMinLines(2);
         etDraft.setGravity(Gravity.TOP);
-        GradientDrawable dbg = new GradientDrawable();
-        dbg.setColor(0x14FFFFFF);
-        dbg.setCornerRadius(dp(10));
-        dbg.setStroke(dp(1), 0x3DFFFFFF);
-        etDraft.setBackground(dbg);
+        // 默认浅底描边 → 聚焦高亮描边，输入位置一目了然
+        GradientDrawable dDef = new GradientDrawable();
+        dDef.setColor(0x14FFFFFF);
+        dDef.setCornerRadius(dp(10));
+        dDef.setStroke(dp(1), 0x3DFFFFFF);
+        GradientDrawable dFoc = new GradientDrawable();
+        dFoc.setColor(0x1FFFFFFF);
+        dFoc.setCornerRadius(dp(10));
+        dFoc.setStroke(dp(1), 0xFF5B9BF6);
+        StateListDrawable dsl = new StateListDrawable();
+        dsl.addState(new int[]{android.R.attr.state_focused}, dFoc);
+        dsl.addState(new int[]{}, dDef);
+        etDraft.setBackground(dsl);
         etDraft.setPadding(dp(10), dp(8), dp(10), dp(8));
         LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(72));
@@ -464,10 +497,11 @@ public class FloatService extends AccessibilityService {
         v.setLineSpacing(dp(2), 1.1f);
         v.setIncludeFontPadding(true);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0x14FFFFFF);
-        bg.setCornerRadius(dp(8));
+        bg.setColor(0x16FFFFFF);
+        bg.setCornerRadius(dp(10));
+        bg.setStroke(dp(1), 0x1FFFFFFF);
         v.setBackground(bg);
-        v.setPadding(dp(9), dp(7), dp(9), dp(7));
+        v.setPadding(dp(10), dp(8), dp(10), dp(8));
         if (selectable) v.setTextIsSelectable(true);
         return v;
     }
@@ -522,21 +556,21 @@ public class FloatService extends AccessibilityService {
         View dot = new View(this);
         GradientDrawable dg = new GradientDrawable();
         dg.setColor(dotColor);
-        dg.setCornerRadius(dp(2));
-        row.addView(dot, new LinearLayout.LayoutParams(dp(4), dp(4)));
+        dg.setCornerRadius(dp(3));
+        row.addView(dot, new LinearLayout.LayoutParams(dp(6), dp(6)));
         TextView t = new TextView(this);
         t.setText(title);
         t.setTextColor(Color.WHITE);
-        t.setTextSize(12);
+        t.setTextSize(13);
         t.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
-        t.setPadding(dp(6), 0, 0, 0);
+        t.setPadding(dp(7), 0, 0, 0);
         row.addView(t);
         v.addView(row);
         TextView d = new TextView(this);
         d.setText(desc);
         d.setTextColor(C_SUB);
         d.setTextSize(10);
-        d.setPadding(dp(10), dp(2), 0, 0);
+        d.setPadding(dp(13), dp(2), 0, 0);
         v.addView(d);
         return v;
     }
@@ -558,9 +592,16 @@ public class FloatService extends AccessibilityService {
         dis.setCornerRadius(dp(12));
         int textColor, textDisabled;
         if (primary) {
-            def.setColor(0xFF2563EB);
-            pr.setColor(0xFF1D4ED8);
+            GradientDrawable grad = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF3B82F6, 0xFF1D4ED8});
+            grad.setCornerRadius(dp(12));
+            GradientDrawable gradPr = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF2563EB, 0xFF1E40AF});
+            gradPr.setCornerRadius(dp(12));
+            def = grad;
+            pr = gradPr;
             dis.setColor(0xFF2A3947);
+            dis.setCornerRadius(dp(12));
             textColor = Color.WHITE;
             textDisabled = 0x55FFFFFF;
         } else {

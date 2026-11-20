@@ -56,6 +56,15 @@ public class MainActivity extends Activity {
     private static final float R_CARD = 20;
     private static final float R_COMP = 14;
     private static final float R_PILL = 999;
+    // 分节图标着色体系（前景色 / 浅底色），保持同一饱和度档位，风格统一
+    private static final int T_BLUE   = 0xFF2563EB; private static final int T_BLUE_BG   = 0xFFEFF6FF;
+    private static final int T_VIOLET = 0xFF7C3AED; private static final int T_VIOLET_BG = 0xFFF5F3FF;
+    private static final int T_GREEN  = 0xFF059669; private static final int T_GREEN_BG  = 0xFFECFDF5;
+    private static final int T_AMBER  = 0xFFB45309; private static final int T_AMBER_BG  = 0xFFFFFBEB;
+    private static final int T_CYAN   = 0xFF0E7490; private static final int T_CYAN_BG   = 0xFFECFEFF;
+    private static final int T_SLATE  = 0xFF475569; private static final int T_SLATE_BG  = 0xFFF1F5F9;
+    private static final int T_OK_BG  = 0xFFECFDF5;
+    private static final int T_ERR_BG = 0xFFFEF2F2;
 
     private Settings st;
     private Handler ui;
@@ -130,7 +139,7 @@ public class MainActivity extends Activity {
 
         // ---- ① 连接与凭据 ----
         LinearLayout c1 = card(content, dp(20));
-        sectionTitle(c1, "连接与凭据", "1", "填写翻译服务密钥；修改后点底部「保存设置」生效");
+        sectionTitle(c1, "连接与凭据", "1", "填写翻译服务密钥；修改后点底部「保存设置」生效", "🔑", T_BLUE, T_BLUE_BG);
         c1.addView(fieldLabel("API Key", "必填 · 在 DeepSeek 开放平台申请，仅保存在本机并加密存储"));
         etKey = input("粘贴 API Key（sk-…）", true);
         c1.addView(etKey);
@@ -150,7 +159,7 @@ public class MainActivity extends Activity {
 
         // ---- ② 模型选择 ----
         LinearLayout cModel = card(content, dp(20));
-        sectionTitle(cModel, "模型选择", "2", "一般保持默认即可；修改立即生效");
+        sectionTitle(cModel, "模型选择", "2", "一般保持默认即可；修改立即生效", "✨", T_VIOLET, T_VIOLET_BG);
         cModel.addView(fieldLabel("翻译使用的模型", null));
         spModel = modelSpinner();
         spModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -170,23 +179,23 @@ public class MainActivity extends Activity {
 
         // ---- ③ 权限开启（逐项：状态 + 去开启）----
         LinearLayout cPerm = card(content, dp(20));
-        sectionTitle(cPerm, "权限开启", "3", "开启翻译方式对应的权限；只用收信翻译，开第一项即可");
+        sectionTitle(cPerm, "权限开启", "3", "开启翻译方式对应的权限；只用收信翻译，开第一项即可", "🛡", T_GREEN, T_GREEN_BG);
         tvPermN = permRow(cPerm, "通知使用权",
-            "收信翻译必需 · 监听聊天应用的新消息",
+            "收信翻译必需 · 监听聊天应用的新消息", "🔔",
             new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     startActivity(new Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
                 }
             });
         tvPermA = permRow(cPerm, "无障碍服务",
-            "悬浮翻译必需 · 让悬浮球读取当前屏幕",
+            "悬浮翻译必需 · 让悬浮球读取当前屏幕", "♿",
             new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
                 }
             });
         tvPermO = permRow(cPerm, "悬浮窗权限",
-            "悬浮球显示必需 · 允许在其他应用上层显示悬浮球",
+            "悬浮球显示必需 · 允许在其他应用上层显示悬浮球", "▣",
             new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -196,7 +205,7 @@ public class MainActivity extends Activity {
             });
         if (Build.VERSION.SDK_INT >= 33) {
             tvPermP = permRow(cPerm, "通知显示权限（Android 13+）",
-                "译文通知显示必需 · 未授予时看不到翻译结果",
+                "译文通知显示必需 · 未授予时看不到翻译结果", "💬",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
@@ -206,7 +215,7 @@ public class MainActivity extends Activity {
 
         // ---- ④ 翻译偏好（即时生效）----
         LinearLayout cPref = card(content, dp(20));
-        sectionTitle(cPref, "翻译偏好", "4", "修改立即生效，无需手动保存");
+        sectionTitle(cPref, "翻译偏好", "4", "修改立即生效，无需手动保存", "⚙", T_AMBER, T_AMBER_BG);
         cPref.addView(fieldLabel("收到的外语消息，翻译成", "默认简体中文"));
         spIncoming = spinner();
         bindSpinner(spIncoming, "incomingLang");
@@ -218,16 +227,18 @@ public class MainActivity extends Activity {
         swNotif = switchRow(cPref, "自动翻译收到的消息",
             "新消息自动弹出「译 ·」通知（需通知使用权）");
         bindSwitch(swNotif, "notifEnabled");
+        divider(cPref);
         swBubble = switchRow(cPref, "悬浮球即点即译",
             "聊天界面点悬浮球翻译当前屏幕（需无障碍 + 悬浮窗权限）");
         bindSwitch(swBubble, "bubbleEnabled");
+        divider(cPref);
         swSkipZh = switchRow(cPref, "对方已发中文时跳过翻译",
             "避免中文消息被重复翻译，节省流量");
         bindSwitch(swSkipZh, "skipChineseIncoming");
 
         // ---- ⑤ 应用更新 ----
         LinearLayout cUp = card(content, dp(20));
-        sectionTitle(cUp, "应用更新", "5", null);
+        sectionTitle(cUp, "应用更新", "5", null, "⬆", T_CYAN, T_CYAN_BG);
 
         // 当前版本行：左侧名称、右侧徽章，单行对齐
         LinearLayout verRow = row();
@@ -279,7 +290,7 @@ public class MainActivity extends Activity {
         // 新版本详情面板（发现新版本时显示）
         updatePanel = new LinearLayout(this);
         updatePanel.setOrientation(LinearLayout.VERTICAL);
-        updatePanel.setBackground(bg(C_PRIMARY_LIGHT, dp(R_COMP), 0));
+        updatePanel.setBackground(bgStroke(C_PRIMARY_LIGHT, 0xFFBFDBFE, dp(R_COMP)));
         updatePanel.setPadding(dp(14), dp(12), dp(14), dp(14));
 
         tvUpdateTitle = new TextView(this);
@@ -327,15 +338,15 @@ public class MainActivity extends Activity {
 
         // ---- ⑥ 使用说明 ----
         LinearLayout cHelp = card(content, dp(20));
-        sectionTitle(cHelp, "使用说明", "6", "三种翻译方式按需使用；不用悬浮翻译可不开启对应权限");
+        sectionTitle(cHelp, "使用说明", "6", "三种翻译方式按需使用；不用悬浮翻译可不开启对应权限", "📖", T_SLATE, T_SLATE_BG);
         cHelp.addView(helpItem("收信翻译",
-            "保持本应用在后台运行；聊天应用收到新消息后，自动发出以「译 ·」开头的通知，同时展示原文与译文。翻译失败时也会发出失败通知并说明原因。"));
+            "保持本应用在后台运行；聊天应用收到新消息后，自动发出以「译 ·」开头的通知，同时展示原文与译文。翻译失败时也会发出失败通知并说明原因。", "🔔"));
         cHelp.addView(helpItem("悬浮翻译",
-            "打开聊天界面后点悬浮球「译」，自动读取当前屏幕内容并翻译显示。"));
+            "打开聊天界面后点悬浮球「译」，自动读取当前屏幕内容并翻译显示。", "🎯"));
         cHelp.addView(helpItem("草稿翻译",
-            "在悬浮面板输入中文，点「翻译并填入」把译文写入聊天输入框；请核对后手动发送，本应用绝不自动发送消息。"));
+            "在悬浮面板输入中文，点「翻译并填入」把译文写入聊天输入框；请核对后手动发送，本应用绝不自动发送消息。", "⌨"));
         cHelp.addView(helpItem("隐私与数据",
-            "聊天内容仅作为翻译请求发送给你配置的 API 服务端，不在本应用保存或上传；译文缓存仅存内存，退出即清空。API Key 本机加密存储；崩溃日志仅保存在本机。完整说明见仓库 PRIVACY.md。"));
+            "聊天内容仅作为翻译请求发送给你配置的 API 服务端，不在本应用保存或上传；译文缓存仅存内存，退出即清空。API Key 本机加密存储；崩溃日志仅保存在本机。完整说明见仓库 PRIVACY.md。", "🔒"));
 
         TextView foot = new TextView(this);
         foot.setText("WSP Translator · 开源 · GitHub @YaChiLau");
@@ -373,46 +384,85 @@ public class MainActivity extends Activity {
         }), half());
         bar.addView(barBtns);
 
+        // 操作栏与内容区之间的发丝分隔线，强化固定层的层次感
+        View hair = new View(this);
+        hair.setBackground(bg(C_STROKE, 0, 0));
+        root.addView(hair, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
+
         root.addView(bar, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         return root;
     }
 
-    /** 顶部渐变横幅：圆角浮层卡片，应用名 + 简介 + 版本胶囊。 */
+    /** 顶部渐变横幅：应用图标位 + 名称简介 + 功能胶囊 + 版本胶囊。 */
     private View buildHero() {
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            new int[]{0xFF3B82F6, C_PRIMARY_DARK});
+            new int[]{0xFF60A5FA, C_PRIMARY, 0xFF1E3A8A});
         g.setCornerRadius(dp(24));
         LinearLayout hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
         hero.setBackground(g);
         hero.setElevation(dp(4));
-        hero.setPadding(dp(24), dp(28), dp(24), dp(24));
+        hero.setPadding(dp(22), dp(22), dp(22), dp(22));
 
+        // 上半部分：图标位 + 名称/简介
+        LinearLayout top = row();
+        TextView icon = new TextView(this);
+        icon.setText("译");
+        icon.setTextColor(Color.WHITE);
+        icon.setTextSize(20);
+        icon.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(bg(0x30FFFFFF, dp(14), dp(1)));
+        top.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
         TextView name = new TextView(this);
         name.setText("WSP 翻译助手");
         name.setTextColor(Color.WHITE);
-        name.setTextSize(24);
+        name.setTextSize(21);
         name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         name.setLetterSpacing(-0.01f);
-        hero.addView(name);
-
+        titles.addView(name);
         TextView sub = new TextView(this);
-        sub.setText("收信翻译 · 悬浮翻译 · 草稿翻译");
+        sub.setText("WhatsApp 聊天实时翻译");
         sub.setTextColor(0xFFBFDBFE);
-        sub.setTextSize(14);
-        sub.setPadding(0, dp(6), 0, 0);
-        hero.addView(sub);
+        sub.setTextSize(13);
+        sub.setPadding(0, dp(3), 0, 0);
+        titles.addView(sub);
+        top.addView(withMargin(titles, dp(14), 0, 0, 0));
+        hero.addView(top);
 
-        TextView chip = new TextView(this);
-        chip.setText("v" + versionName() + "  ·  build " + versionCode());
-        chip.setTextColor(Color.WHITE);
-        chip.setTextSize(11);
-        chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        chip.setBackground(bg(0x2EFFFFFF, dp(R_PILL), 0));
-        chip.setPadding(dp(12), dp(5), dp(12), dp(5));
-        hero.addView(withMargin(chip, 0, dp(14), 0, 0));
+        // 下半部分：三个功能胶囊 + 版本胶囊
+        LinearLayout chips = row();
+        chips.setPadding(0, dp(16), 0, 0);
+        String[] feats = {"通知翻译", "悬浮翻译", "草稿翻译"};
+        for (String f : feats) {
+            TextView chip = new TextView(this);
+            chip.setText(f);
+            chip.setTextColor(Color.WHITE);
+            chip.setTextSize(11);
+            chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            chip.setBackground(bg(0x24FFFFFF, dp(R_PILL), 0));
+            chip.setPadding(dp(11), dp(4), dp(11), dp(4));
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cp.rightMargin = dp(8);
+            chips.addView(chip, cp);
+        }
+        TextView ver = new TextView(this);
+        ver.setText("v" + versionName());
+        ver.setTextColor(0xFFBFDBFE);
+        ver.setTextSize(11);
+        ver.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        vp.leftMargin = dp(2);
+        chips.addView(ver, vp);
+        hero.addView(chips);
 
         return hero;
     }
@@ -446,19 +496,17 @@ public class MainActivity extends Activity {
         return v;
     }
 
-    /** 卡片内分节标题：彩色竖条 + 加粗标题 + 序号胶囊 + 可选说明行。 */
-    private void sectionTitle(ViewGroup card, String title, String no) {
-        sectionTitle(card, title, no, null);
-    }
-
-    private void sectionTitle(ViewGroup card, String title, String no, String caption) {
+    /** 卡片内分节标题：着色图标位 + 加粗标题 + 序号胶囊 + 可选说明行。 */
+    private void sectionTitle(ViewGroup card, String title, String no, String caption,
+                              String glyph, int tintFg, int tintBg) {
         LinearLayout row = row();
-        View bar = new View(this);
-        GradientDrawable bd = new GradientDrawable();
-        bd.setColor(C_PRIMARY);
-        bd.setCornerRadius(dp(2));
-        bar.setBackground(bd);
-        row.addView(bar, new LinearLayout.LayoutParams(dp(4), dp(18)));
+        TextView tile = new TextView(this);
+        tile.setText(glyph);
+        tile.setTextColor(tintFg);
+        tile.setTextSize(13);
+        tile.setGravity(Gravity.CENTER);
+        tile.setBackground(bg(tintBg, dp(8), 0));
+        row.addView(tile, new LinearLayout.LayoutParams(dp(27), dp(27)));
 
         TextView t = new TextView(this);
         t.setText(title);
@@ -470,10 +518,10 @@ public class MainActivity extends Activity {
 
         TextView n = new TextView(this);
         n.setText(no);
-        n.setTextColor(C_PRIMARY);
+        n.setTextColor(tintFg);
         n.setTextSize(11);
         n.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        n.setBackground(bg(C_PRIMARY_LIGHT, dp(R_PILL), 0));
+        n.setBackground(bg(tintBg, dp(R_PILL), 0));
         n.setPadding(dp(9), dp(3), dp(9), dp(3));
         row.addView(n);
 
@@ -484,7 +532,7 @@ public class MainActivity extends Activity {
             c.setText(caption);
             c.setTextColor(C_HINT);
             c.setTextSize(12);
-            c.setPadding(dp(16), 0, dp(2), 0);
+            c.setPadding(dp(37), 0, dp(2), 0);
             LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             cp.setMargins(0, 0, 0, dp(12));
@@ -495,6 +543,16 @@ public class MainActivity extends Activity {
             sp.setMargins(0, 0, 0, dp(10));
             card.addView(new View(this), sp);
         }
+    }
+
+    /** 卡片内细分隔线：区分同卡片内的并列条目。 */
+    private View divider(ViewGroup parent) {
+        View v = new View(this);
+        v.setBackground(bg(C_STROKE, 0, 0));
+        parent.addView(withMargin(v, dp(2), dp(4), dp(2), dp(4)),
+            new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
+        return v;
     }
 
     /** 字段标签：主标签 + 一行说明。 */
@@ -775,14 +833,25 @@ public class MainActivity extends Activity {
         return sw;
     }
 
-    /** 权限条目行：左侧名称+用途+状态，右侧「去开启」按钮（开启后隐藏）。
+    /** 权限条目行：左侧图标位+名称+用途+状态胶囊，右侧「去开启」按钮（开启后隐藏）。
      *  返回状态 TextView（tag 上挂按钮，供 refreshPerm 更新）。 */
-    private TextView permRow(ViewGroup parent, String title, String desc, View.OnClickListener open) {
+    private TextView permRow(ViewGroup parent, String title, String desc, String glyph,
+                             View.OnClickListener open) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackground(bgStroke(C_CARD, C_STROKE, dp(R_COMP)));
-        row.setPadding(dp(14), dp(12), dp(14), dp(12));
+        row.setBackground(bg(C_PAGE, dp(R_COMP), dp(1)));
+        row.setPadding(dp(12), dp(11), dp(12), dp(11));
+
+        TextView tile = new TextView(this);
+        tile.setText(glyph);
+        tile.setTextColor(T_GREEN);
+        tile.setTextSize(15);
+        tile.setGravity(Gravity.CENTER);
+        tile.setBackground(bgStroke(C_CARD, C_STROKE, dp(10)));
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(dp(32), dp(32));
+        tp.rightMargin = dp(10);
+        row.addView(tile, tp);
 
         LinearLayout left = new LinearLayout(this);
         left.setOrientation(LinearLayout.VERTICAL);
@@ -799,10 +868,15 @@ public class MainActivity extends Activity {
         d.setPadding(0, dp(2), 0, 0);
         left.addView(d);
         TextView s = new TextView(this);
-        s.setTextSize(12);
+        s.setTextSize(11);
         s.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        s.setPadding(0, dp(5), 0, 0);
-        left.addView(s);
+        // 胶囊底色由 setPermState 按状态着色；先给默认占位
+        s.setBackground(bg(T_ERR_BG, dp(R_PILL), 0));
+        s.setPadding(dp(9), dp(3), dp(9), dp(3));
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sp.topMargin = dp(6);
+        left.addView(s, sp);
 
         row.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
@@ -829,24 +903,38 @@ public class MainActivity extends Activity {
         return s;
     }
 
-    /** 使用说明条目：标题 + 说明段。 */
-    private View helpItem(String title, String desc) {
+    /** 使用说明条目：图标位 + 标题 + 说明段。 */
+    private View helpItem(String title, String desc, String glyph) {
         LinearLayout v = new LinearLayout(this);
-        v.setOrientation(LinearLayout.VERTICAL);
+        v.setOrientation(LinearLayout.HORIZONTAL);
         v.setPadding(dp(2), dp(2), dp(2), dp(10));
+
+        TextView tile = new TextView(this);
+        tile.setText(glyph);
+        tile.setTextColor(C_PRIMARY);
+        tile.setTextSize(14);
+        tile.setGravity(Gravity.CENTER);
+        tile.setBackground(bg(C_PRIMARY_LIGHT, dp(9), 0));
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(dp(30), dp(30));
+        tp.rightMargin = dp(10);
+        v.addView(tile, tp);
+
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
         TextView t = new TextView(this);
         t.setText(title);
         t.setTextColor(C_TEXT);
         t.setTextSize(13);
         t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        v.addView(t);
+        col.addView(t);
         TextView d = new TextView(this);
         d.setText(desc);
         d.setTextColor(C_SUB);
         d.setTextSize(12);
         d.setLineSpacing(dp(3), 1f);
         d.setPadding(0, dp(4), 0, 0);
-        v.addView(d);
+        col.addView(d);
+        v.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         return v;
     }
 
@@ -875,17 +963,24 @@ public class MainActivity extends Activity {
     private Button primaryBtn(String t, View.OnClickListener l) {
         Button b = new Button(this);
         b.setText(t);
-        b.setTextSize(14);
+        b.setTextSize(15);
         b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setLetterSpacing(0.02f);
         b.setAllCaps(false);
         b.setStateListAnimator(null); // 去系统投影，按压反馈交给波纹
         b.setTextColor(textColor(Color.WHITE, C_HINT));
+        GradientDrawable grad = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{0xFF3B82F6, C_PRIMARY});
+        grad.setCornerRadius(dp(R_COMP));
+        GradientDrawable gradPressed = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{0xFF2563EB, C_PRIMARY_PRESSED});
+        gradPressed.setCornerRadius(dp(R_COMP));
         b.setBackground(interactiveBg(
-            bg(C_PRIMARY, dp(R_COMP), 0),
-            bg(C_PRIMARY_PRESSED, dp(R_COMP), 0),
+            grad,
+            gradPressed,
             bg(C_DISABLED_BG, dp(R_COMP), 0),
             0x2E2563EB));
-        b.setPadding(0, dp(13), 0, dp(13));
+        b.setPadding(0, dp(14), 0, dp(14));
         b.setOnClickListener(l);
         return b;
     }
@@ -1287,17 +1382,19 @@ public class MainActivity extends Activity {
             setPermState(tvPermP, postNotif, "译文通知可显示", "看不到译文通知");
     }
 
-    /** 更新权限条目状态：✓/✗ 着色，已开启时隐藏「去开启」按钮。 */
+    /** 更新权限条目状态胶囊：已开启（绿）/ 未开启（红），已开启时隐藏「去开启」按钮。 */
     private void setPermState(TextView status, boolean ok, String okHint, String noHint) {
         if (status == null) return;
         Button b = (Button) status.getTag();
         if (ok) {
-            status.setText("✓ 已开启 · " + okHint);
+            status.setText("已开启 · " + okHint);
             status.setTextColor(C_OK);
+            status.setBackground(bg(T_OK_BG, dp(R_PILL), 0));
             if (b != null) b.setVisibility(View.GONE);
         } else {
-            status.setText("✗ 未开启 · " + noHint);
+            status.setText("未开启 · " + noHint);
             status.setTextColor(C_ERR);
+            status.setBackground(bg(T_ERR_BG, dp(R_PILL), 0));
             if (b != null) b.setVisibility(View.VISIBLE);
         }
     }
