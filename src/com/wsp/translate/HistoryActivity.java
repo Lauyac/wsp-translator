@@ -32,8 +32,8 @@ public class HistoryActivity extends Activity {
 
     private static final int C_PAGE   = 0xFFF6F7FB;
     private static final int C_CARD   = 0xFFFFFFFF;
-    private static final int C_PRIMARY= 0xFF2563EB;
-    private static final int C_PRIMARY_LIGHT = 0xFFEFF6FF;
+    private static final int C_PRIMARY= 0xFF054795;
+    private static final int C_PRIMARY_LIGHT = 0xFFEDF3FA;
     private static final int C_TEXT   = 0xFF0F172A;
     private static final int C_SUB    = 0xFF475569;
     private static final int C_HINT   = 0xFF94A3B8;

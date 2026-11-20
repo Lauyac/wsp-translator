@@ -462,7 +462,7 @@ public class FloatService extends AccessibilityService {
         badge.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
         badge.setGravity(Gravity.CENTER);
         GradientDrawable bbg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            new int[]{0xFF60A5FA, 0xFF2563EB});
+            new int[]{0xFF7FA9D9, 0xFF054795});
         bbg.setCornerRadius(dp(10));
         badge.setBackground(bbg);
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(30), dp(30));
@@ -717,10 +717,10 @@ public class FloatService extends AccessibilityService {
         int textColor, textDisabled;
         if (primary) {
             GradientDrawable grad = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF3B82F6, 0xFF1D4ED8});
+                new int[]{0xFF3F7DC0, 0xFF043C7F});
             grad.setCornerRadius(dp(12));
             GradientDrawable gradPr = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF2563EB, 0xFF1E40AF});
+                new int[]{0xFF054795, 0xFF032C5C});
             gradPr.setCornerRadius(dp(12));
             def = grad;
             pr = gradPr;

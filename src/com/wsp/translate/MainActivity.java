@@ -39,10 +39,10 @@ public class MainActivity extends Activity {
     // 配色：页面/卡片/主色/文字四级/描边/禁用
     private static final int C_PAGE   = 0xFFF6F7FB;  // 页面底色（更柔和）
     private static final int C_CARD   = 0xFFFFFFFF;  // 卡片
-    private static final int C_PRIMARY= 0xFF2563EB;  // 主色 蓝
-    private static final int C_PRIMARY_DARK = 0xFF1E40AF;
-    private static final int C_PRIMARY_PRESSED = 0xFF1D4ED8;  // 按下态
-    private static final int C_PRIMARY_LIGHT = 0xFFEFF6FF;
+    private static final int C_PRIMARY= 0xFF054795;  // 主色 深海蓝（品牌色）
+    private static final int C_PRIMARY_DARK = 0xFF032C5C;
+    private static final int C_PRIMARY_PRESSED = 0xFF043C7F;  // 按下态
+    private static final int C_PRIMARY_LIGHT = 0xFFEDF3FA;
     private static final int C_TEXT   = 0xFF0F172A;  // 主文字
     private static final int C_SUB    = 0xFF475569;  // 次级文字（加深提升可读性）
     private static final int C_HINT   = 0xFF94A3B8;  // 辅助文字/占位/禁用文字
@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     private static final float R_COMP = 14;
     private static final float R_PILL = 999;
     // 分节图标着色体系（前景色 / 浅底色），保持同一饱和度档位，风格统一
-    private static final int T_BLUE   = 0xFF2563EB; private static final int T_BLUE_BG   = 0xFFEFF6FF;
+    private static final int T_BLUE   = 0xFF054795; private static final int T_BLUE_BG   = 0xFFEDF3FA;
     private static final int T_VIOLET = 0xFF7C3AED; private static final int T_VIOLET_BG = 0xFFF5F3FF;
     private static final int T_GREEN  = 0xFF059669; private static final int T_GREEN_BG  = 0xFFECFDF5;
     private static final int T_AMBER  = 0xFFB45309; private static final int T_AMBER_BG  = 0xFFFFFBEB;
@@ -294,9 +294,9 @@ public class MainActivity extends Activity {
         tvVerBadge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         tvVerBadge.setBackground(interactiveBg(
             bg(C_PRIMARY_LIGHT, dp(10), 0),
-            bg(0xFFDBEAFE, dp(10), 0),
+            bg(0xFFD8E6F4, dp(10), 0),
             bg(C_PRIMARY_LIGHT, dp(10), 0),
-            0x142563EB));
+            0x14054795));
         tvVerBadge.setPadding(dp(10), dp(4), dp(10), dp(4));
         // 点击徽章查看当前版本的更新内容
         tvVerBadge.setOnClickListener(new View.OnClickListener() {
@@ -329,7 +329,7 @@ public class MainActivity extends Activity {
         // 新版本详情面板（发现新版本时显示）
         updatePanel = new LinearLayout(this);
         updatePanel.setOrientation(LinearLayout.VERTICAL);
-        updatePanel.setBackground(bgStroke(C_PRIMARY_LIGHT, 0xFFBFDBFE, dp(R_COMP)));
+        updatePanel.setBackground(bgStroke(C_PRIMARY_LIGHT, 0xFFA9C7E8, dp(R_COMP)));
         updatePanel.setPadding(dp(14), dp(12), dp(14), dp(14));
 
         tvUpdateTitle = new TextView(this);
@@ -455,7 +455,7 @@ public class MainActivity extends Activity {
     /** 顶部渐变横幅：应用图标位 + 名称简介 + 功能胶囊 + 版本胶囊。 */
     private View buildHero() {
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            new int[]{0xFF60A5FA, C_PRIMARY, 0xFF1E3A8A});
+            new int[]{0xFF7FA9D9, C_PRIMARY, 0xFF02244A});
         g.setCornerRadius(dp(24));
         LinearLayout hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
@@ -485,7 +485,7 @@ public class MainActivity extends Activity {
         titles.addView(name);
         TextView sub = new TextView(this);
         sub.setText("WhatsApp 聊天实时翻译");
-        sub.setTextColor(0xFFBFDBFE);
+        sub.setTextColor(0xFFA9C7E8);
         sub.setTextSize(13);
         sub.setPadding(0, dp(3), 0, 0);
         titles.addView(sub);
@@ -511,7 +511,7 @@ public class MainActivity extends Activity {
         }
         TextView ver = new TextView(this);
         ver.setText("v" + versionName());
-        ver.setTextColor(0xFFBFDBFE);
+        ver.setTextColor(0xFFA9C7E8);
         ver.setTextSize(11);
         ver.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(
@@ -745,7 +745,7 @@ public class MainActivity extends Activity {
                 mask.setCornerRadius(dp(10));
                 mask.setColor(0xFFFFFFFF);
                 v.setBackground(new RippleDrawable(
-                    android.content.res.ColorStateList.valueOf(0x142563EB), g, mask));
+                    android.content.res.ColorStateList.valueOf(0x14054795), g, mask));
                 v.setTextColor(sel ? C_PRIMARY : C_TEXT);
                 v.setTypeface(Typeface.create("sans-serif",
                     sel ? Typeface.BOLD : Typeface.NORMAL));
@@ -944,9 +944,9 @@ public class MainActivity extends Activity {
         b.setTextColor(textColor(C_PRIMARY, C_HINT));
         b.setBackground(interactiveBg(
             bgStroke(C_PRIMARY_LIGHT, C_PRIMARY, dp(R_COMP)),
-            bgStroke(0xFFDBEAFE, C_PRIMARY, dp(R_COMP)),
+            bgStroke(0xFFD8E6F4, C_PRIMARY, dp(R_COMP)),
             bgStroke(C_PAGE, C_STROKE, dp(R_COMP)),
-            0x1A2563EB));
+            0x1A054795));
         b.setPadding(dp(14), dp(8), dp(14), dp(8));
         b.setOnClickListener(open);
         s.setTag(b);
@@ -1026,16 +1026,16 @@ public class MainActivity extends Activity {
         b.setStateListAnimator(null); // 去系统投影，按压反馈交给波纹
         b.setTextColor(textColor(Color.WHITE, C_HINT));
         GradientDrawable grad = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            new int[]{0xFF3B82F6, C_PRIMARY});
+            new int[]{0xFF3F7DC0, C_PRIMARY});
         grad.setCornerRadius(dp(R_COMP));
         GradientDrawable gradPressed = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            new int[]{0xFF2563EB, C_PRIMARY_PRESSED});
+            new int[]{0xFF054795, C_PRIMARY_PRESSED});
         gradPressed.setCornerRadius(dp(R_COMP));
         b.setBackground(interactiveBg(
             grad,
             gradPressed,
             bg(C_DISABLED_BG, dp(R_COMP), 0),
-            0x2E2563EB));
+            0x2E054795));
         b.setPadding(0, dp(14), 0, dp(14));
         b.setOnClickListener(l);
         return b;
@@ -1053,7 +1053,7 @@ public class MainActivity extends Activity {
             bgStroke(C_CARD, C_PRIMARY, dp(R_COMP)),
             bgStroke(C_PRIMARY_LIGHT, C_PRIMARY, dp(R_COMP)),
             bgStroke(C_PAGE, C_STROKE, dp(R_COMP)),
-            0x1A2563EB));
+            0x1A054795));
         b.setPadding(0, dp(13), 0, dp(13));
         b.setOnClickListener(l);
         return b;
