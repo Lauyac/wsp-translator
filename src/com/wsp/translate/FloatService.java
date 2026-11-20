@@ -3,8 +3,11 @@ package com.wsp.translate;
 import android.accessibilityservice.AccessibilityService;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -13,6 +16,7 @@ import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -53,6 +57,9 @@ public class FloatService extends AccessibilityService {
     private static final int C_ERR = 0xFFFF6B6B;
     private static final int C_WARN = 0xFFFFC107;
 
+    /** 悬浮球直径（dp）。拖拽偏移、位置恢复、吸附边界均以此推导，避免硬编码不同步。 */
+    private static final int BUBBLE_DP = 36;
+
     // WhatsApp 界面固定文案（精确匹配即丢弃，避免按钮/菜单文字混入译文）
     private static final Set<String> UI_CHROME = new HashSet<>(Arrays.asList(
         "输入消息", "键入消息", "输入一条消息", "消息", "WhatsApp", "WhatsApp Web",
@@ -78,6 +85,8 @@ public class FloatService extends AccessibilityService {
     private boolean lastResultOk = false;
     private boolean busy = false;
     private AccessibilityNodeInfo lastWaRoot;
+    /** 当前服务实例，供主界面开关悬浮球时实时生效。 */
+    private static volatile FloatService instance;
 
     @Override
     protected void onServiceConnected() {
@@ -85,13 +94,17 @@ public class FloatService extends AccessibilityService {
         CrashHandler.install(this);
         ui = new Handler(Looper.getMainLooper());
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        instance = this;
         if (new Settings(this).bubbleEnabled()) addBubble();
     }
 
     @Override
     public void onDestroy() {
-        if (bubble != null && bubble.getParent() != null) wm.removeView(bubble);
-        if (panel != null && panel.getParent() != null) wm.removeView(panel);
+        instance = null;
+        removeBubble();
+        if (panel != null && panel.getParent() != null) {
+            try { wm.removeView(panel); } catch (Exception ignored) { }
+        }
         super.onDestroy();
     }
 
@@ -113,17 +126,31 @@ public class FloatService extends AccessibilityService {
 
     // ---------- 悬浮球 ----------
 
+    /** 主界面开关悬浮球时实时生效；服务未运行时仅写偏好，下次服务启动按设置加载。 */
+    public static void applyBubbleEnabled(Context c, boolean enabled) {
+        new Settings(c).put("bubbleEnabled", enabled);
+        final FloatService s = instance;
+        if (s == null || s.wm == null) return;
+        s.ui.post(new Runnable() {
+            @Override public void run() {
+                if (enabled) s.addBubble(); else s.removeBubble();
+            }
+        });
+    }
+
     private void addBubble() {
+        if (bubble != null && bubble.getParent() != null) return; // 已在显示，避免重复添加
+        int size = dp(BUBBLE_DP);
         TextView tv = new TextView(this);
         tv.setText("译");
         tv.setTextColor(Color.WHITE);
-        tv.setTextSize(12);
+        tv.setTextSize(11);
         tv.setIncludeFontPadding(false);
         tv.setGravity(Gravity.CENTER);
         tv.setBackgroundResource(R.drawable.bubble_bg);
 
         final WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
-            dp(42), dp(42),
+            size, size,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
@@ -132,17 +159,19 @@ public class FloatService extends AccessibilityService {
         // 恢复上次吸附的位置；无记录或屏幕变化时回落到默认位置
         Settings ps = new Settings(this);
         int px = ps.bubbleX(), py = ps.bubbleY();
-        int w = getResources().getDisplayMetrics().widthPixels;
-        int h = getResources().getDisplayMetrics().heightPixels;
-        if (px >= 0 && py >= 0 && px + dp(42) <= w && py + dp(42) <= h) {
+        Point scr = realSize();
+        if (px >= 0 && py >= 0 && px + size <= scr.x && py + size <= scr.y) {
             lp.x = px;
             lp.y = py;
         } else {
-            lp.x = dp(8);
+            lp.x = dp(6);
             lp.y = dp(280);
         }
 
-        final float[] down = new float[2];
+        final int sz = size;
+        final float[] down = new float[2];   // ACTION_DOWN 时的 raw 坐标（判断点击 vs 拖拽）
+        final float[] grab = new float[2];   // 手指相对悬浮球左上角的偏移（保证拖拽跟手不跳动）
+        final boolean[] moved = new boolean[1];
         tv.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent ev) {
@@ -150,20 +179,33 @@ public class FloatService extends AccessibilityService {
                     case MotionEvent.ACTION_DOWN:
                         down[0] = ev.getRawX();
                         down[1] = ev.getRawY();
+                        grab[0] = ev.getRawX() - lp.x;
+                        grab[1] = ev.getRawY() - lp.y;
+                        moved[0] = false;
                         return true;
-                    case MotionEvent.ACTION_MOVE:
-                        lp.x = (int) (ev.getRawX() - dp(21));
-                        lp.y = (int) (ev.getRawY() - dp(21));
+                    case MotionEvent.ACTION_MOVE: {
+                        float dx = ev.getRawX() - down[0];
+                        float dy = ev.getRawY() - down[1];
+                        if (!moved[0] && dx * dx + dy * dy < dp(10) * dp(10)) return true; // 消除静止误抖
+                        moved[0] = true;
+                        lp.x = Math.round(ev.getRawX() - grab[0]);
+                        lp.y = Math.round(ev.getRawY() - grab[1]);
+                        clampToScreen(lp, sz);
                         try { wm.updateViewLayout(v, lp); } catch (Exception ignored) { }
                         return true;
+                    }
                     case MotionEvent.ACTION_UP:
                         float dx = ev.getRawX() - down[0];
                         float dy = ev.getRawY() - down[1];
-                        if (dx * dx + dy * dy < dp(10) * dp(10)) {
+                        if (!moved[0] && dx * dx + dy * dy < dp(10) * dp(10)) {
                             togglePanel();
                         } else {
                             snapBubble(v, lp);
                         }
+                        return true;
+                    case MotionEvent.ACTION_CANCEL:
+                        // 系统/父级取消手势（如来电、权限弹窗）：若已拖动则吸附归位，避免悬停在半空
+                        if (moved[0]) snapBubble(v, lp);
                         return true;
                     default:
                         return false;
@@ -174,22 +216,64 @@ public class FloatService extends AccessibilityService {
         try { wm.addView(tv, lp); bubble = tv; } catch (Exception ignored) { }
     }
 
-    /** 拖动结束后把悬浮球吸附到最近的屏幕左/右边缘，并限制纵向范围在屏幕内；位置持久化。 */
-    private void snapBubble(View v, WindowManager.LayoutParams lp) {
-        int size = dp(42);
-        int margin = dp(8);
-        int w = getResources().getDisplayMetrics().widthPixels;
-        int h = getResources().getDisplayMetrics().heightPixels;
-        int fromLeft = lp.x;
-        int fromRight = w - lp.x - size;
-        lp.x = fromLeft <= fromRight ? margin : w - size - margin;
+    private void removeBubble() {
+        if (bubble != null && bubble.getParent() != null) {
+            try { wm.removeView(bubble); } catch (Exception ignored) { }
+        }
+        bubble = null;
+        hidePanel();
+    }
+
+    /** 把悬浮球窗口坐标钳制在屏幕（物理全屏）范围内，拖拽与吸附共用。 */
+    private void clampToScreen(WindowManager.LayoutParams lp, int size) {
+        Point scr = realSize();
+        if (lp.x < 0) lp.x = 0;
         if (lp.y < 0) lp.y = 0;
-        if (lp.y > h - size) lp.y = Math.max(0, h - size);
+        if (lp.x > scr.x - size) lp.x = Math.max(0, scr.x - size);
+        if (lp.y > scr.y - size) lp.y = Math.max(0, scr.y - size);
+    }
+
+    /** 物理（含状态栏/导航栏）屏幕尺寸；悬浮窗可覆盖全屏，按可用区域钳制会到不了屏幕边缘。 */
+    private Point realSize() {
+        Point p = new Point();
+        try {
+            Display d = wm.getDefaultDisplay();
+            if (d != null) d.getRealSize(p);
+        } catch (Exception ignored) { }
+        if (p.x <= 0 || p.y <= 0) {
+            android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+            p.set(m.widthPixels, m.heightPixels);
+        }
+        return p;
+    }
+
+    /** 拖动结束后把悬浮球吸附到最近的屏幕左/右边缘，纵向钳制在屏幕内；位置持久化。 */
+    private void snapBubble(View v, WindowManager.LayoutParams lp) {
+        int size = dp(BUBBLE_DP);
+        int margin = dp(6);
+        Point scr = realSize();
+        int fromLeft = lp.x;
+        int fromRight = scr.x - lp.x - size;
+        lp.x = fromLeft <= fromRight ? margin : scr.x - size - margin;
+        clampToScreen(lp, size);
         try { wm.updateViewLayout(v, lp); } catch (Exception ignored) { }
         // 记住吸附位置，服务重启/开机后悬浮球回到用户放的位置
         Settings ps = new Settings(this);
         ps.put("bubbleX", lp.x);
         ps.put("bubbleY", lp.y);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // 旋转/分屏后屏幕尺寸变化：立即重新吸附，防止悬浮球留在屏幕外
+        if (bubble != null && bubble.getParent() != null && wm != null) {
+            try {
+                WindowManager.LayoutParams lp =
+                    (WindowManager.LayoutParams) bubble.getLayoutParams();
+                snapBubble(bubble, lp);
+            } catch (Exception ignored) { }
+        }
     }
 
     private void togglePanel() {
@@ -210,6 +294,13 @@ public class FloatService extends AccessibilityService {
                 }
             }
         });
+    }
+
+    /** 关闭悬浮面板（若已显示）。悬浮球被关闭时同步收起，避免面板失去入口后悬空。 */
+    private void hidePanel() {
+        if (panel != null && panel.getParent() != null) {
+            try { wm.removeView(panel); } catch (Exception ignored) { }
+        }
     }
 
     private WindowManager.LayoutParams panelLp() {

@@ -860,11 +860,14 @@ public class MainActivity extends Activity {
         });
     }
 
-    /** Switch 即时保存。 */
+    /** Switch 即时保存；悬浮球开关额外通知服务实时增删悬浮窗。 */
     private void bindSwitch(final Switch sw, final String key) {
         sw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
                 st.put(key, checked);
+                if ("bubbleEnabled".equals(key)) {
+                    FloatService.applyBubbleEnabled(MainActivity.this, checked);
+                }
             }
         });
     }
